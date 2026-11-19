@@ -604,7 +604,7 @@ function rectify(){
 }
 // Camera at the foot end, low angle: a ball's image lands farther from the camera than the ball.
 // camGround = where the camera stands (table coords), st.cam.height = lens height above the felt (inches).
-const camGround = () => [1 + 8/W(), .5];
+const camGround = () => st.cam.ground || [1 + 8/W(), .5];   // where the camera stands (table coords); default = beyond the foot rail
 function hTrue(u,v){ const h=st.cam.height; if(!h) return [u,v]; const [gu,gv]=camGround(), f=(h-R)/h; return [gu+(u-gu)*f, gv+(v-gv)*f]; }
 function hSeen(u,v){ const h=st.cam.height; if(!h) return [u,v]; const [gu,gv]=camGround(), f=h/(h-R); return [gu+(u-gu)*f, gv+(v-gv)*f]; }
 // Fine-tune: a straight-line correction per axis, fitted from balls placed on known spots.
