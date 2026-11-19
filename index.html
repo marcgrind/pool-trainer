@@ -1245,6 +1245,7 @@ function voiceCmd(t){ listenUntil=0;
   else if(/\bscore\b/.test(t)){ heardAt=performance.now(); toast('Heard: score'); capture().then(det=>{ finishShotFeedback(null, det); scoreShot(det); }); }
 }
 function again(){ result=null; if(game&&game.over){ startGame(game.type); return; } enterPlacing(); render(); speak('Set up the balls'); }
+window.__pt = { rectify:()=>rectify(), findBalls:(A,d)=>findBalls(A,d), detect:A=>detect(A), feltChroma:A=>feltChroma(A), shotOptions:A=>shotOptions(A) };
 window.__poolDebug = { get track(){ return track; }, get lastShot(){ return lastShot; }, get state(){ return shotState; } };
 
 // ---------- shot recorder: saves the webcam clip + tracking data for each shot ----------
@@ -1458,7 +1459,7 @@ var advice=null, adviceOn=false;
 function hueName(c){ const [r,g,b]=c, mx=Math.max(r,g,b), mn=Math.min(r,g,b), d=mx-mn||1; let hh = mx===r ? ((g-b)/d)%6 : mx===g ? (b-r)/d+2 : (r-g)/d+4; hh*=60; if(hh<0) hh+=360;
   if(mx<70) return 'black'; if(d<35) return mx>170?'white':'grey';
   if(hh<12||hh>=340) return mx<140?'maroon':'red'; if(hh<35) return 'orange'; if(hh<70) return 'yellow'; if(hh<170) return 'green'; if(hh<255) return 'blue'; return 'purple'; }
-function findBalls(A){
+function findBalls(A, diag){
   const F=feltChroma(A), N=A.gw*A.gh, mask=new Uint8Array(N), m=Math.round(R*P*.6);
   for(let y=m;y<A.gh-m;y++) for(let x=m;x<A.gw-m;x++){ const k=y*A.gw+x, o=k*3, r=A.px[o],g=A.px[o+1],b=A.px[o+2], t=r+g+b+1;
     if(Math.hypot(r/t-F[0],g/t-F[1])>.07 || t>F[2]*1.45 || t<F[2]*.55) mask[k]=1; }
@@ -1468,14 +1469,15 @@ function findBalls(A){
       if(px<x0)x0=px; if(px>x1)x1=px; if(py<y0)y0=py; if(py>y1)y1=py;
       for(const nb of [p-1,p+1,p-A.gw,p+A.gw]){ if(nb<0||nb>=N||(nb===p-1&&px===0)||(nb===p+1&&px===A.gw-1)) continue; if(mask[nb]&&!lab[nb]){ lab[nb]=1; q[t++]=nb; } } }
     const bw=x1-x0+1, bh=y1-y0+1, ratio=n/target, asp=bw/bh, fill=n/(bw*bh);
-    if(ratio<.35||ratio>2.6||asp<.5||asp>2||fill<.4) continue;
-    const cxp=sx/n, cyp=sy/n, [u,v]=toTrue((cxp+.5)/A.gw,(cyp+.5)/A.gh);
-    if(POCKETS.some(pk=>Math.hypot((pk[0]-u)*W(),(pk[1]-v)*H())<5)) continue;              // pocket openings look dark
+    const cxp=sx/n, cyp=sy/n, [u,v]=toTrue((cxp+.5)/A.gw,(cyp+.5)/A.gh), info={u:+(u*W()).toFixed(1),v:+(v*H()).toFixed(1),n,ratio:+ratio.toFixed(2),asp:+asp.toFixed(2),fill:+fill.toFixed(2),col:[cr/n,cg/n,cb/n].map(Math.round)};
+    if(n>=8 && diag) diag.push(info);
+    if(ratio<.35||ratio>2.6||asp<.5||asp>2||fill<.4){ info.why='shape'; continue; }
+    if(POCKETS.some(pk=>Math.hypot((pk[0]-u)*W(),(pk[1]-v)*H())<3)){ info.why='pocket'; continue; }              // pocket openings look dark
     // a ball sits on clear felt: the ring around it must be mostly felt (rules out the cue, hands, chalk on the rail)
     const r0=Math.max(bw,bh)/2*1.35, r1=r0+R*P*1.1; let rn=0,rk=0;
     for(let yy=Math.floor(cyp-r1);yy<=cyp+r1;yy++) for(let xx=Math.floor(cxp-r1);xx<=cxp+r1;xx++){ const dd=(xx-cxp)**2+(yy-cyp)**2;
       if(xx<0||yy<0||xx>=A.gw||yy>=A.gh||dd>r1*r1||dd<r0*r0) continue; rn++; if(mask[yy*A.gw+xx]) rk++; }
-    if(rn && rk/rn>.22) continue;
+    if(rn && rk/rn>.22){ info.why='ring '+(rk/rn).toFixed(2); continue; } info.why='ok';
     out.push({u,v,col:[cr/n,cg/n,cb/n],name:hueName([cr/n,cg/n,cb/n])}); }
   return out; }
 function segBlocked(a,b,balls,skip,w,h){ const ax=a[0],ay=a[1],dx=b[0]-ax,dy=b[1]-ay,L=dx*dx+dy*dy||1;
