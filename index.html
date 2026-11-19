@@ -1246,7 +1246,7 @@ function voiceCmd(t){ listenUntil=0;
   else if(/\bscore\b/.test(t)){ heardAt=performance.now(); toast('Heard: score'); capture().then(det=>{ finishShotFeedback(null, det); scoreShot(det); }); }
 }
 function again(){ result=null; if(game&&game.over){ startGame(game.type); return; } enterPlacing(); render(); speak('Set up the balls'); }
-window.__pt = { rectify:()=>rectify(), findBalls:(A,d)=>findBalls(A,d), detect:A=>detect(A), feltChroma:A=>feltChroma(A), shotOptions:A=>shotOptions(A), whiteDbg:A=>{ const o=shotOptions(A); return o.cue&&[o.cue.u*W(),o.cue.v*H(),o.cue.wf]; } };
+window.__pt = { rectify:()=>rectify(), findBalls:(A,d)=>findBalls(A,d), detect:A=>detect(A), feltChroma:A=>feltChroma(A), shotOptions:A=>shotOptions(A), whiteDbg:A=>{ const o=shotOptions(A); return {cue:o.cue&&[o.cue.u*W(),o.cue.v*H(),o.cue.wf], balls:(o.balls||[]).map(b=>[+(b.u*W()).toFixed(1),+(b.v*H()).toFixed(1),+(b.wf||0).toFixed(2),b.name])}; } };
 window.__poolDebug = { get track(){ return track; }, get lastShot(){ return lastShot; }, get state(){ return shotState; } };
 
 // ---------- shot recorder: saves the webcam clip + tracking data for each shot ----------
@@ -1493,7 +1493,7 @@ function shotOptions(A){
   // cue ball = the ball whose whole circle is evenly white (a stripe has a coloured band)
   const whiteFrac=b=>{ const [su,sv]=toSeen(b.u,b.v), cx=su*A.gw, cy=sv*A.gh, r=R*P*.8; let n=0,k=0;
     for(let y=Math.floor(cy-r);y<=cy+r;y++) for(let x=Math.floor(cx-r);x<=cx+r;x++){ if(x<0||y<0||x>=A.gw||y>=A.gh||(x-cx)**2+(y-cy)**2>r*r) continue; n++;
-      const o=(y*A.gw+x)*3, a=A.px[o],g=A.px[o+1],bb=A.px[o+2], mn=Math.min(a,g,bb); if(mn>110 && Math.max(a,g,bb)-mn<70) k++; } return n?k/n:0; };
+      const o=(y*A.gw+x)*3, a=A.px[o],g=A.px[o+1],bb=A.px[o+2], mn=Math.min(a,g,bb); if(mn>145 && Math.max(a,g,bb)-mn<50) k++; } return n?k/n:0; };
   found.forEach(b=>b.wf=whiteFrac(b)); const best=found.slice().sort((a,b)=>b.wf-a.wf)[0];
   const cue = best && best.wf>.45 ? best : detect(A); if(!cue) return {err:'Couldn’t find the cue ball'};
   const balls=found.filter(b=>b!==cue && Math.hypot((b.u-cue.u)*w,(b.v-cue.v)*h)>BALL_D*.8);
