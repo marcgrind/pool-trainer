@@ -1462,7 +1462,14 @@ function findBalls(A){
       for(const nb of [p-1,p+1,p-A.gw,p+A.gw]){ if(nb<0||nb>=N||(nb===p-1&&px===0)||(nb===p+1&&px===A.gw-1)) continue; if(mask[nb]&&!lab[nb]){ lab[nb]=1; q[t++]=nb; } } }
     const bw=x1-x0+1, bh=y1-y0+1, ratio=n/target, asp=bw/bh, fill=n/(bw*bh);
     if(ratio<.35||ratio>2.6||asp<.5||asp>2||fill<.4) continue;
-    const [u,v]=toTrue((sx/n+.5)/A.gw,(sy/n+.5)/A.gh); out.push({u,v,col:[cr/n,cg/n,cb/n],name:hueName([cr/n,cg/n,cb/n])}); }
+    const cxp=sx/n, cyp=sy/n, [u,v]=toTrue((cxp+.5)/A.gw,(cyp+.5)/A.gh);
+    if(POCKETS.some(pk=>Math.hypot((pk[0]-u)*W(),(pk[1]-v)*H())<5)) continue;              // pocket openings look dark
+    // a ball sits on clear felt: the ring around it must be mostly felt (rules out the cue, hands, chalk on the rail)
+    const r0=Math.max(bw,bh)/2*1.35, r1=r0+R*P*1.1; let rn=0,rk=0;
+    for(let yy=Math.floor(cyp-r1);yy<=cyp+r1;yy++) for(let xx=Math.floor(cxp-r1);xx<=cxp+r1;xx++){ const dd=(xx-cxp)**2+(yy-cyp)**2;
+      if(xx<0||yy<0||xx>=A.gw||yy>=A.gh||dd>r1*r1||dd<r0*r0) continue; rn++; if(mask[yy*A.gw+xx]) rk++; }
+    if(rn && rk/rn>.22) continue;
+    out.push({u,v,col:[cr/n,cg/n,cb/n],name:hueName([cr/n,cg/n,cb/n])}); }
   return out; }
 function segBlocked(a,b,balls,skip,w,h){ const ax=a[0],ay=a[1],dx=b[0]-ax,dy=b[1]-ay,L=dx*dx+dy*dy||1;
   return balls.some(o=>{ if(skip.includes(o)) return false; const px=o.u*w, py=o.v*h; let t=((px-ax)*dx+(py-ay)*dy)/L; if(t<=0||t>=1) return false; return Math.hypot(px-ax-t*dx,py-ay-t*dy)<BALL_D*.98; }); }
