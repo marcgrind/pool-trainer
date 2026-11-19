@@ -29,6 +29,7 @@ kbd{background:#2a2a30;border:1px solid #444;border-radius:4px;padding:0 4px;fon
 #modal .box{background:#1b1b20;border:1px solid #444;border-radius:10px;padding:14px;width:min(720px,92vw)}
 #modal textarea{width:100%;height:320px;background:#111;color:#ddd;border:1px solid #444;border-radius:6px;font:12px ui-monospace,Menlo,monospace;box-sizing:border-box;padding:8px}
 #fb{position:fixed;right:12px;bottom:12px;max-width:min(560px,45vw);background:rgba(18,18,22,.94);border:1px solid #333;border-left:4px solid #ffd400;border-radius:10px;padding:10px 14px;font-size:17px;line-height:1.5;z-index:9;display:none}
+table.pt{border-collapse:collapse;width:100%;margin:8px 0}table.pt td,table.pt th{border-bottom:1px solid #333;padding:5px 8px;text-align:left}table.pt th{color:#999;font-weight:600}
 #blk{position:fixed;inset:0;background:#000;display:none;z-index:15}
 #camBox{position:fixed;left:12px;top:12px;width:min(480px,40vw,62vh);background:rgba(18,18,22,.96);border:1px solid #333;border-radius:10px;padding:8px;z-index:11;font-size:12px}
 #camBox.off{left:-9999px;top:0}
@@ -56,6 +57,7 @@ input[type=range]{padding:0;width:90px}
 <div id="panel"></div>
 <div id="toast"></div>
 <div id="fb"></div>
+<div id="prog" style="position:fixed;inset:0;background:rgba(0,0,0,.75);display:none;align-items:center;justify-content:center;z-index:21" onclick="if(event.target===this)this.style.display='none'"><div class="box" style="background:#1b1b20;border:1px solid #444;border-radius:10px;padding:16px;width:min(640px,92vw)"><div class="row" style="justify-content:space-between"><b>Your progress</b><button onclick="document.getElementById('prog').style.display='none'">Close</button></div><div id="progBody"></div></div></div>
 <div id="modal"><div class="box">
   <div class="row" style="justify-content:space-between"><b>Drills &amp; setup (JSON)</b><button data-act="closeModal">Close</button></div>
   <div class="tip">Copy this to back up your drills and your setup (table size, camera calibration, sounds, best scores) or move them to another computer. To import, paste it here (or load a .json file) and press a Load button.</div>
@@ -153,7 +155,8 @@ let mode = 'play', tool = 'select', ballNum = 1, sel = null, panelOn = true, bla
 const $ = id => document.getElementById(id);
 const svg = $('svg'), warp = $('warp'), stage = $('stage'), panel = $('panel');
 const W = () => SIZES[st.size][0], H = () => SIZES[st.size][1];
-const drill = () => st.drills[st.idx] || (st.drills[0] = {name:'New drill',notes:'',items:[]});
+var coach={on:false};
+const drill = () => (coach.on && coach.d && mode==='play') ? coach.d : st.drills[st.idx] || (st.drills[0] = {name:'New drill',notes:'',items:[]});
 function save(){ try { localStorage.setItem(KEY, JSON.stringify(st)); } catch(e) {} }
 function toast(msg){ const t=$('toast'); t.textContent=msg; t.style.opacity=1; clearTimeout(toast.h); toast.h=setTimeout(()=>t.style.opacity=0,1600); }
 
@@ -244,7 +247,7 @@ function render(){
   }
   if (mode!=='cal' && mode!=='cam'){
     if (game && mode==='play'){ s+=gameSVG(); s+=trailSVG(); s+=placementSVG(); s+=camStatus(); if (result) s+=markerSVG(result); svg.innerHTML=s; return finishRender(); }
-    if (mode==='play' && adviceOn){ s+=adviceSVG(); svg.innerHTML=s; return finishRender(); }
+    if (mode==='play' && adviceOn){ s+=adviceSVG()+runoutSVG(); svg.innerHTML=s; return finishRender(); }
     if (mode!=='edit') s+=aidSVG(d.items, shotSpec(d));
     d.items.forEach((it,i)=> s+=itemSVG(it, mode==='edit' && i===sel));
     if (mode==='play') s+=trailSVG()+placementSVG();
@@ -370,7 +373,7 @@ function buildPanel(){
   if (mode==='play'){
     h+=`<div class="row"><span class="lbl">Games</span>${Object.entries(GAMES).map(([k,g])=>`<button class="${game&&game.type===k?'on':''}" data-act="game" data-v="${k}">${g.title}</button>`).join('')}${game?'<button data-act="quitGame">Quit game</button>':''}</div>`;
     if (game) h+=`<div class="tip">${GAMES[game.type].help}</div>`;
-    h+=`<div class="row"><button class="${st.voice?'on':''}" data-act="voice">Voice commands</button><button class="${st.record?'on':''}" data-act="record">Record shots</button><button class="${st.aids!==false?'on':''}" data-act="aids">Shot guides</button><button class="${adviceOn?'on':''}" data-act="advice" title="Find all balls and suggest the best shots (O)">Shot options</button><span class="tip">After a shot say "yes" or "again" (or press <kbd>Enter</kbd>) to set it up again · "next" · "back" · "score"</span></div>`;
+    h+=`<div class="row"><button class="${st.voice?'on':''}" data-act="voice">Voice commands</button><button class="${st.record?'on':''}" data-act="record">Record shots</button><button class="${st.aids!==false?'on':''}" data-act="aids">Shot guides</button><button class="${adviceOn&&!runout?'on':''}" data-act="advice" title="Find all balls and suggest the best shots (O)">Shot options</button><button class="${runout?'on':''}" data-act="runout" title="Plan each shot and where the cue ball should land for the next one">Run-out practice</button><button class="${coach.on?'on':''}" data-act="coach" title="Picks drills for your weakest skills and levels you up">Coach</button><button data-act="progress">Progress</button><span class="tip">After a shot say "yes" or "again" (or press <kbd>Enter</kbd>) to set it up again · "next" · "back" · "score"</span></div>`;
     if (!game) h+=`<div class="tip"><kbd>S</kbd> score now · <kbd>A</kbd> re-arm auto-score · <kbd>→</kbd>/<kbd>PgDn</kbd>/<kbd>Space</kbd> next · <kbd>←</kbd>/<kbd>PgUp</kbd> prev (any presentation clicker works) · <kbd>F</kbd> flip ↔ · <kbd>V</kbd> flip ↕ · <kbd>R</kbd> random rack · <kbd>B</kbd> blackout · <kbd>H</kbd> hide this panel · <kbd>E</kbd> edit · <kbd>C</kbd> calibrate</div>`;
   }
   panel.innerHTML=h;
@@ -423,7 +426,10 @@ panel.addEventListener('click', e=>{
     case 'camTest': capture().then(det=>{ result = det ? {u:det.u,v:det.v,label:'Detected'} : null; if(!det) toast('Cue ball not found — adjust White ≥ / Max tint'); render(); }); return;
     case 'screenView': st.screenView=!st.screenView; break;
     case 'emptyRef': captureEmpty(); return;
-    case 'advice': adviceOn=!adviceOn; advice=null; showFeedback([]); if(adviceOn) runAdvice(); break;
+    case 'advice': adviceOn=!adviceOn; runout=null; advice=null; showFeedback([]); if(adviceOn) runAdvice(); break;
+    case 'runout': if(runout){ runout=null; adviceOn=false; advice=null; showFeedback([]); } else { coach.on=false; adviceOn=true; runout={n:0,ok:0}; runoutPlan(); } break;
+    case 'coach': coach.on=!coach.on; if(coach.on){ adviceOn=false; runout=null; advice=null; coachPick(); } else { coach.d=null; showFeedback([]); } break;
+    case 'progress': showProgress(); return;
     case 'aids': st.aids = st.aids===false; break;
     case 'record': st.record=!st.record; if(!st.record) recEnd(false); else toast('Recording on — each shot is saved to Downloads (Chrome may ask to allow multiple downloads: click Allow)'); break;
     case 'voice': st.voice=!st.voice; if(st.voice){ voiceOn(); speak('Voice commands on. Say yes or again to reset the balls, or next for the next drill.'); } else voiceOff(); break;
@@ -571,7 +577,7 @@ function drawOv(){
   (st.cam.side||[]).forEach((p,i)=>{ if(!p) return; ovx.fillStyle='#ff0'; ovx.beginPath(); ovx.arc(p[0]*ov.width,p[1]*ov.height,4,0,7); ovx.fill(); ovx.fillText('S'+(i+1),p[0]*ov.width+7,p[1]*ov.height-7); });
   ovx.fillStyle='#0ff';
   P.forEach((p,i)=>{ ovx.beginPath(); ovx.arc(p[0]*ov.width,p[1]*ov.height,5,0,7); ovx.fill(); ovx.fillText(i+1,p[0]*ov.width+8,p[1]*ov.height-8); });
-  if(P.length===4 && vid.videoWidth && mode==='play' && adviceOn) drawAdviceOnCamera();
+  if(P.length===4 && vid.videoWidth && mode==='play' && adviceOn){ drawAdviceOnCamera(); drawRunoutOnCamera(); }
   else if(P.length===4 && vid.videoWidth && mode==='play') drawAidsOnCamera(game?(game.over?[]:game.items):drill().items, game?null:shotSpec(drill()));
   if(P.length===4 && vid.videoWidth && mode==='play' && !adviceOn){ const H_=camH(1,1), k=ov.width/vid.videoWidth;
     placeItems().forEach(it=>{ const [su,sv]=toSeen(it.u,it.v), [x,y]=camMap(H_,su,sv), [x2,y2]=camMap(H_,su+R/W(),sv), [x3,y3]=camMap(H_,su,sv+R/H());
@@ -1211,7 +1217,8 @@ function analyzeShot(){
 function speak(text){ if(st.speak!==true || !window.speechSynthesis) return; try{ speechSynthesis.cancel(); const u=new SpeechSynthesisUtterance(text); u.rate=1.05;
   speaking=true; u.onend=u.onerror=()=>{ speaking=false; heardAt=performance.now(); if(/Again\?$/.test(text)) openListen(8000); }; speechSynthesis.speak(u); }catch(e){ speaking=false; } }
 function finishShotFeedback(A, det){
-  if(!A) A=rectify(); const a = A&&track ? stillAnalysis(A, det||null) : analyzeShot(); setTimeout(()=>recEnd(true, a?a.lines:['(no analysis)']), 1200); if(!a) return; lastShot=a; showFeedback(a.lines); if(st.voice && st.speak!==true) openListen(10000);
+  if(!A) A=rectify(); const a = A&&track ? stillAnalysis(A, det||null) : analyzeShot();
+  if(a){ const e=logShot(a, det); if(coach.on && e) a.lines.push(...coachAfterShot(e)); } setTimeout(()=>recEnd(true, a?a.lines:['(no analysis)']), 1200); if(!a) return; lastShot=a; showFeedback(a.lines); if(st.voice && st.speak!==true) openListen(10000);
   speak(a.lines.filter(l=>!/^Speed/.test(l)).slice(0,2).join('. ').replace(/✓/g,'').replace(/→/g,',').replace(/"/g,' inches').replace(/°/g,' degrees') + (st.voice ? '. Again?' : ''));
 }
 function showFeedback(lines){ const el=$('fb'); if(!el) return; el.innerHTML = lines.map(l=>`<div>${esc(l)}</div>`).join(''); el.style.display = lines.length?'block':'none'; }
@@ -1517,7 +1524,112 @@ function drawAdviceOnCamera(){ if(!advice||!advice.top||!vid.videoWidth) return;
     seg(x.ob,x.pk,null,i?2:3.5); seg([advice.cue.u*w,advice.cue.v*h],x.gh,[6,5],i?2:3);
     const [lx,ly]=felt([x.ob[0],x.ob[1]-3.5]); ovx.font='bold 18px system-ui'; ovx.lineWidth=4; ovx.strokeStyle='#000'; ovx.strokeText(String(i+1),lx,ly); ovx.fillStyle=cols[i]; ovx.fillText(String(i+1),lx,ly); }); }
 function runAdvice(){ const A=rectify(); if(!A){ toast('Start the camera and set its corners first'); return; } advice=shotOptions(A); showFeedback(adviceText(advice)); render(); drawOv(); }
-setInterval(()=>{ if(adviceOn && mode==='play' && camState==='on' && !capturing && (performance.now()-(stillSince||0))>800) runAdvice(); }, 1500);
+setInterval(()=>{ if(adviceOn && !runout && mode==='play' && camState==='on' && !capturing && (performance.now()-(stillSince||0))>800) runAdvice(); }, 1500);
+
+// ---------- 1. skill profile: every scored shot is logged and grouped by skill ----------
+function tipType(spec){ const y=spec.tip[1]; return y<=-.4?'draw':y>=.3?'follow':'stop'; }
+function drillKeys(d){ const sh=shotAids(d.items).shots[0], spec=shotSpec(d);
+  if(!sh || !sh.cb) return ['speed control'];
+  const k=[]; k.push(sh.cut<12?'straight-in':sh.cut<35?'medium cut':'thin cut'); if(sh.cut<12) k.push(tipType(spec)==='draw'?'draw shot':tipType(spec)==='follow'?'follow shot':'stop shot');
+  if(Math.hypot(sh.ghost[0]-sh.cb[0],sh.ghost[1]-sh.cb[1])>48) k.push('long shot'); return k; }
+const SKILLS=['stop shot','follow shot','draw shot','straight-in','medium cut','thin cut','long shot','speed control','position play'];
+function logShot(a, det){
+  const d=drill(), items=game?game.items:d.items, w=W(), h=H();
+  const tg = game&&game.target ? game.target : items.find(it=>it.t==='target');
+  const err = det&&tg ? Math.hypot((tg.u-det.u)*w,(tg.v-det.v)*h) : null;
+  const e={t:Date.now(), drill:game?GAMES[game.type].title:d.name, keys:game?['position play']:drillKeys(d), made:a.made, err, posOK: err==null?null:err<=Math.max(tg.r||3,3)};
+  st.log=(st.log||[]).concat([e]).slice(-1500); save(); return e; }
+function profile(){ const P={}; SKILLS.forEach(k=>P[k]={n:0,made:0,mk:0,pos:0,pk:0,err:0,en:0});
+  (st.log||[]).forEach(e=>e.keys.forEach(k=>{ const p=P[k]; if(!p) return; p.n++; if(e.made!=null){ p.mk++; if(e.made) p.made++; } if(e.posOK!=null){ p.pk++; if(e.posOK) p.pos++; } if(e.err!=null){ p.err+=e.err; p.en++; } }));
+  Object.values(P).forEach(p=>{ p.makeRate=(p.made+1)/(p.mk+2); p.posRate=(p.pos+1)/(p.pk+2); p.avgErr=p.en?p.err/p.en:null;
+    p.weak=(1-p.makeRate)*.6+(1-p.posRate)*.4 + (p.n<5?.25:0); });
+  return P; }
+function showProgress(){
+  const P=profile(), pct=x=>Math.round(x*100)+'%', rows=SKILLS.map(k=>{ const p=P[k]; return `<tr><td>${k}</td><td>${p.n}</td><td>${p.mk?pct(p.made/p.mk):'–'}</td><td>${p.pk?pct(p.pos/p.pk):'–'}</td><td>${p.avgErr!=null?p.avgErr.toFixed(1)+'"':'–'}</td></tr>`; }).join('');
+  const weak=SKILLS.filter(k=>P[k].n>=5).sort((a,b)=>P[b].weak-P[a].weak).slice(0,3);
+  const lv=Object.entries(st.levels||{}).map(([k,v])=>`${esc(k)}: level ${v}`).join(' · ')||'none yet';
+  $('progBody').innerHTML=`<table class="pt"><tr><th>Skill</th><th>Shots</th><th>Made</th><th>Position</th><th>Avg miss</th></tr>${rows}</table>
+    <p><b>Weakest right now:</b> ${weak.length?weak.join(', '):'need at least 5 shots per skill'}</p><p><b>Coach levels:</b> ${lv}</p>
+    <p class="tip">${(st.log||[]).length} shots logged on this computer. "Made" counts pots; "Position" counts cue balls finishing on target.</p>`;
+  $('prog').style.display='flex'; }
+
+// ---------- 2. coach mode: picks drills for your weakest skills, levels you up and down ----------
+function levelled(d, L){ const c=JSON.parse(JSON.stringify(d)); c.name=d.name; c.base=d.name; if(L<=1) return c;
+  const sh=shotAids(c.items).shots[0], w=W(), h=H();
+  if(sh && sh.cb){ const dx=sh.cb[0]-sh.ghost[0], dy=sh.cb[1]-sh.ghost[1], Ld=Math.hypot(dx,dy)||1, back=(L-1)*5;
+    let nx=sh.cb[0]+dx/Ld*back, ny=sh.cb[1]+dy/Ld*back; nx=Math.max(3,Math.min(w-3,nx)); ny=Math.max(3,Math.min(h-3,ny));
+    const ou=sh.cb[0]/w, ov=sh.cb[1]/h;
+    c.items.forEach(it=>{ if(it.t==='ball'&&it.n===0){ it.u=nx/w; it.v=ny/h; }
+      if(it.t==='line'&&it.style==='cue'&&Math.hypot(it.pts[0][0]-ou,it.pts[0][1]-ov)<.02) it.pts[0]=[nx/w,ny/h]; }); }
+  c.items.forEach(it=>{ if(it.t==='target') it.r=Math.max(1.2,it.r*Math.max(.45,1-.12*(L-1))); });
+  c.notes=`Coach · level ${L} — ${d.notes||''}`; return c; }
+function coachPick(){
+  const P=profile(), cands=st.drills.map((d,i)=>({i,d,keys:drillKeys(d)})).filter(x=>!/Random rack|Line of balls|runout/i.test(x.d.name));
+  cands.forEach(x=>{ x.score=x.keys.reduce((a,k)=>a+(P[k]?P[k].weak:0),0)/x.keys.length + Math.random()*.08; });
+  cands.sort((a,b)=>b.score-a.score); const pick=cands[0]; if(!pick) return;
+  const keys=pick.keys.slice().sort((a,b)=>P[b].weak-P[a].weak), L=(st.levels||{})[pick.d.name]||1;
+  coach.base=pick.i; coach.key=keys[0]; coach.level=L; coach.d=levelled(pick.d,L); coach.streak=0; coach.misses=0; coach.attempts=0;
+  const p=P[coach.key]; coach.why = p.n<5 ? `not enough ${coach.key}s logged yet` : `${coach.key}: ${Math.round(p.made/Math.max(1,p.mk)*100)}% made, ${Math.round(p.pos/Math.max(1,p.pk)*100)}% on position`;
+  result=null; lastShot=null; enterPlacing(); buildPanel(); render();
+  showFeedback([`Coach: ${pick.d.name}, level ${L}`, `Why: ${coach.why}`, '3 good shots in a row = next level · 2 misses in a row = back a level']); }
+function coachAfterShot(e){
+  const good = e.made!==false && (e.posOK==null || e.posOK);
+  coach.attempts++; if(good){ coach.streak++; coach.misses=0; } else { coach.misses++; coach.streak=0; }
+  const name=st.drills[coach.base].name, out=[]; st.levels=st.levels||{};
+  if(coach.streak>=3){ st.levels[name]=Math.min(8,(st.levels[name]||1)+1); out.push(`Coach: level up! → level ${st.levels[name]}`); }
+  else if(coach.misses>=2 && (st.levels[name]||1)>1){ st.levels[name]--; out.push(`Coach: back to level ${st.levels[name]} — build it up again`); }
+  else out.push(`Coach: ${good?'good one':'try again'} (${coach.streak}/3 in a row)`);
+  save();
+  if(out[0].includes('level') || coach.attempts>=8){ setTimeout(coachPick, 2500); out.push('Next drill coming up…'); }
+  return out; }
+
+// ---------- 3. run-out practice: plan the shot AND where the cue ball should land for the next one ----------
+var runout=null;
+function predictEnd(cbP, obP, pk, tip){ const w=W(), h=H(), items=[{t:'ball',u:cbP[0]/w,v:cbP[1]/h,n:0},{t:'ball',u:obP[0]/w,v:obP[1]/h,n:1},{t:'line',style:'ob',pts:[[obP[0]/w,obP[1]/h],[pk[0]/w,pk[1]/h]]}];
+  const pr=shotAids(items,{tip,speed:3}).pred[0]; return pr ? pr.pts[pr.pts.length-1] : null; }
+function idealZone(o, cueGuess, all){ const w=W(), h=H(); let best=null;
+  [[0,0],[.5,0],[1,0],[0,1],[.5,1],[1,1]].forEach(([pu,pv])=>{ const pk=[pu*w,pv*h], ob=[o.u*w,o.v*h], dx=pk[0]-ob[0], dy=pk[1]-ob[1], L=Math.hypot(dx,dy)||1, ux=dx/L, uy=dy/L;
+    if(pu===.5 && Math.abs(uy)<.55) return; if(segBlocked(ob,pk,all,[o],w,h)) return;
+    const gh=[ob[0]-ux*BALL_D, ob[1]-uy*BALL_D], c=[gh[0]-ux*14, gh[1]-uy*14];
+    if(c[0]<4||c[1]<4||c[0]>w-4||c[1]>h-4) return; const sc=L+Math.hypot(c[0]-cueGuess[0],c[1]-cueGuess[1])*.3;
+    if(!best||sc<best.sc) best={sc,c,pk,o}; }); return best; }
+function planRunout(a){
+  if(!a||!a.top||!a.top.length) return null; const w=W(), h=H(), all=a.balls.concat([a.cue]); let best=null;
+  const TIPS=[[[0,-.2],'stun / stop (just below center)'],[[0,.5],'follow (above center)'],[[0,-.6],'draw (low)']];
+  a.top.forEach(x=>{ const rest=a.balls.filter(b=>b!==x.o);
+    if(!rest.length){ if(!best||x.diff<best.score) best={x,tip:TIPS[0],zone:null,next:null,score:x.diff}; return; }
+    TIPS.forEach(T=>{ const end=predictEnd([a.cue.u*w,a.cue.v*h],x.ob,x.pk,T[0]); if(!end) return;
+      rest.forEach(n=>{ const z=idealZone(n,end,all.filter(b=>b!==x.o)); if(!z) return; const miss=Math.hypot(end[0]-z.c[0],end[1]-z.c[1]);
+        const score=x.diff+miss*3; if(!best||score<best.score) best={x,tip:T,zone:z,next:n,score,end}; }); }); });
+  return best; }
+function runoutText(pl){ if(!pl) return ['No clear pot — play a safety, then press O to re-plan.'];
+  const L=[`Run-out: pot the ${pl.x.o.name} ball in the ${pl.x.pocketName.replace(/ \(rail [AB]\)/,'')} (${Math.round(pl.x.cut)}° cut)`, `Hit: ${pl.tip[1]}, medium speed`];
+  if(pl.zone) L.push(`Goal: cue ball into the green circle for the ${pl.next.name} ball next`); else L.push('Last ball — just make it.');
+  return L; }
+function runoutSVG(){ if(!runout||!runout.plan) return ''; const pl=runout.plan, w=W(), h=H(); let s='';
+  if(pl.zone) s+=`<circle cx="${fx(pl.zone.c[0]/w)}" cy="${fy(pl.zone.c[1]/h)}" r="7" fill="#39ff14" fill-opacity=".18" stroke="#39ff14" stroke-width=".25"/>`;
+  if(pl.end) s+=`<circle cx="${fx(pl.end[0]/w)}" cy="${fy(pl.end[1]/h)}" r="${R}" fill="none" stroke="#fff" stroke-width=".18" stroke-dasharray=".3 .3"/>`;
+  return s; }
+function drawRunoutOnCamera(){ if(!runout||!runout.plan||!runout.plan.zone||!vid.videoWidth) return; const M=camH(1,1), k=ov.width/vid.videoWidth, w=W(), h=H(), c=runout.plan.zone.c;
+  ovx.beginPath(); for(let i=0;i<=36;i++){ const a=i/36*Math.PI*2, [x,y]=(()=>{ const [p,q]=linInvert((c[0]+Math.cos(a)*7)/w,(c[1]+Math.sin(a)*7)/h); return camMap(M,p,q); })(); i?ovx.lineTo(x*k,y*k):ovx.moveTo(x*k,y*k); }
+  ovx.fillStyle='rgba(57,255,20,.22)'; ovx.fill(); ovx.lineWidth=5; ovx.strokeStyle='rgba(0,0,0,.6)'; ovx.stroke(); ovx.lineWidth=2.5; ovx.strokeStyle='#39ff14'; ovx.stroke(); }
+function runoutPlan(){ const A=rectify(); if(!A) return; advice=shotOptions(A); if(advice.err){ showFeedback([advice.err]); return; }
+  const pl=planRunout(advice); if(pl) advice.top=[pl.x].concat(advice.top.filter(t=>t!==pl.x)).slice(0,1);
+  runout={plan:pl, cue:{u:advice.cue.u,v:advice.cue.v}, col:pl?(()=>{ const c=pl.x.o.col, t=c[0]+c[1]+c[2]+1; return [c[0]/t,c[1]/t,t]; })():null, prevDet:null, n:(runout&&runout.n)||0, ok:(runout&&runout.ok)||0};
+  showFeedback(runoutText(pl).concat(runout.n?[`Run so far: ${runout.ok}/${runout.n} shots with position`]:[])); render(); drawOv(); }
+function runoutTick(){
+  if(!runout||!runout.plan||mode!=='play'||camState!=='on'||capturing) return; const A=rectify(); if(!A) return; const det=detect(A), w=W(), h=H();
+  if(!det || Math.hypot((det.u-runout.cue.u)*w,(det.v-runout.cue.v)*h)<3){ runout.prevDet=null; return; }
+  if(runout.prevDet && Math.hypot((det.u-runout.prevDet.u)*w,(det.v-runout.prevDet.v)*h)<.6){ if(performance.now()-runout.prevDet.t<550) return;
+    const pl=runout.plan, f=runout.col?findColBall(A,runout.col):null, made=!f;
+    const zoneErr = pl.zone ? Math.hypot(det.u*w-pl.zone.c[0], det.v*h-pl.zone.c[1]) : null, inZone = zoneErr!=null && zoneErr<=7;
+    const lines=[made?`Made the ${pl.x.o.name} ball ✓`:`Missed the ${pl.x.o.name} ball`];
+    if(zoneErr!=null) lines.push(inZone?'Cue ball in the position zone ✓':`Cue ball ${zoneErr.toFixed(0)}" from the position zone`);
+    runout.n++; if(made&&(inZone||zoneErr==null)) runout.ok++;
+    st.log=(st.log||[]).concat([{t:Date.now(),drill:'Run-out',keys:['position play'],made,err:zoneErr,posOK:zoneErr==null?null:inZone}]).slice(-1500); save();
+    sndScore(made?(inZone?3:1):0); runout.plan=null; showFeedback(lines.concat(['Re-planning…'])); setTimeout(runoutPlan, 2500); return; }
+  if(!runout.prevDet || Math.hypot((det.u-runout.prevDet.u)*w,(det.v-runout.prevDet.v)*h)>=.6) runout.prevDet={u:det.u,v:det.v,t:performance.now()}; }
+setInterval(runoutTick, 300);
 // ---------- keyboard ----------
 addEventListener('keydown', e=>{
   if(/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { if(e.key==='Escape') document.activeElement.blur(); return; }
@@ -1547,7 +1659,7 @@ addEventListener('keydown', e=>{
   // play
   if(k==='s'||k==='S'){ capture().then(det=>{ finishShotFeedback(null, det); scoreShot(det); }); return; }
   if(game){ if(gameKey(k)) e.preventDefault(); return; }
-  if(k==='o'||k==='O'){ adviceOn=!adviceOn; advice=null; showFeedback([]); if(adviceOn) runAdvice(); buildPanel(); render(); return; }
+  if(k==='o'||k==='O'){ if(runout){ runoutPlan(); return; } adviceOn=!adviceOn; advice=null; showFeedback([]); if(adviceOn) runAdvice(); buildPanel(); render(); return; }
   if(k==='Enter' && !game){ e.preventDefault(); again(); return; }
   if(k==='a'||k==='A'){ result=null; arm(); toast('Auto-score armed'); return; }
   if(['ArrowRight','PageDown',' ','n','N','Enter'].includes(k)){ e.preventDefault(); go(st.idx+1); }
