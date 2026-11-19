@@ -661,7 +661,8 @@ function detect(A){
       for(const nb of [p-1,p+1,p-gw,p+gw]){ if(nb<0||nb>=N) continue; if((nb===p-1&&px_===0)||(nb===p+1&&px_===gw-1)) continue; if(mask[nb]&&!lab[nb]){ lab[nb]=1; q[t++]=nb; } } }
     const bw=x1-x0+1, bh=y1-y0+1, ratio=n/target, asp=bw/bh, fill=n/(bw*bh);
     if(ratio<.25||ratio>(loose?4:2.5)||asp<(loose?.33:.5)||asp>(loose?3:2)||fill<.4) continue;
-    const sc=Math.abs(Math.log(ratio))+Math.abs(Math.log(asp))*(loose?.4:1);
+    // a solid white ball fills its whole circle; a striped ball only shows part white, so penalise small blobs more
+    const sc=(ratio<1?Math.log(1/ratio)*2:Math.log(ratio))+Math.abs(Math.log(asp))*(loose?.4:1);
     if(!best||sc<best.sc) best={sc,u:(sx/n+.5)/gw,v:(sy/n+.5)/gh,n}; }
   if(best){ const [ru,rv]=hTrue(best.u,best.v), [u,v]=toTrue(best.u,best.v); best.ru=ru; best.rv=rv; best.u=u; best.v=v; }
   // debug preview
@@ -1481,7 +1482,7 @@ function findBalls(A, diag){
     // a ball sits on clear felt: the ring around it must be mostly felt (rules out the cue, hands, chalk on the rail)
     const r0=Math.max(bw,bh)/2*1.35, r1=r0+R*P*1.1; let rn=0,rk=0;
     for(let yy=Math.floor(cyp-r1);yy<=cyp+r1;yy++) for(let xx=Math.floor(cxp-r1);xx<=cxp+r1;xx++){ const dd=(xx-cxp)**2+(yy-cyp)**2;
-      if(xx<0||yy<0||xx>=A.gw||yy>=A.gh||dd>r1*r1||dd<r0*r0) continue; rn++; if(mask[yy*A.gw+xx]) rk++; }
+      if(xx<m+3||yy<m+3||xx>=A.gw-m-3||yy>=A.gh-m-3||dd>r1*r1||dd<r0*r0) continue; rn++; if(mask[yy*A.gw+xx]) rk++; }   // skip the cushion edge
     if(rn && rk/rn>.22){ info.why='ring '+(rk/rn).toFixed(2); continue; } info.why='ok';
     out.push({u,v,col:[cr/n,cg/n,cb/n],name:hueName([cr/n,cg/n,cb/n])}); }
   return out; }
