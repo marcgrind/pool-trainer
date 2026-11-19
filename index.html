@@ -244,6 +244,7 @@ function render(){
   }
   if (mode!=='cal' && mode!=='cam'){
     if (game && mode==='play'){ s+=gameSVG(); s+=trailSVG(); s+=placementSVG(); s+=camStatus(); if (result) s+=markerSVG(result); svg.innerHTML=s; return finishRender(); }
+    if (mode!=='edit') s+=aidSVG(d.items, shotSpec(d));
     d.items.forEach((it,i)=> s+=itemSVG(it, mode==='edit' && i===sel));
     if (mode==='play') s+=trailSVG()+placementSVG();
     const sk = st.stats[d.name];
@@ -320,6 +321,8 @@ function buildPanel(){
     </div>
     <div class="row"><button data-act="bend">Add bend to path</button><button data-act="bigger">Target/text +</button><button data-act="smaller">Target/text −</button><button data-act="del">Delete item</button><span class="sep"></span>
       <span class="lbl">Name</span><input data-act="name" value="${esc(d.name)}" style="width:170px">
+      <span class="lbl">Tip</span><select data-act="tipPreset">${Object.entries(TIP_PRESETS).map(([k2,v])=>{ const sp=shotSpec(d); return `<option value="${k2}" ${sp.tip[0]===v[0]&&sp.tip[1]===v[1]?'selected':''}>${v[2]}</option>`; }).join('')}</select>
+      <span class="lbl">Speed</span><select data-act="speedSel">${[1,2,3,4,5].map(n=>`<option ${shotSpec(d).speed===n?'selected':''}>${n}</option>`).join('')}</select>
       <span class="lbl">Notes</span><input data-act="notes" value="${esc(d.notes||'')}" style="width:220px"><span class="sep"></span>
       <button data-act="newDrill">New</button><button data-act="dupDrill">Duplicate</button><button data-act="up">Move ↑</button><button data-act="delDrill">Delete drill</button>
     </div>
@@ -366,7 +369,7 @@ function buildPanel(){
   if (mode==='play'){
     h+=`<div class="row"><span class="lbl">Games</span>${Object.entries(GAMES).map(([k,g])=>`<button class="${game&&game.type===k?'on':''}" data-act="game" data-v="${k}">${g.title}</button>`).join('')}${game?'<button data-act="quitGame">Quit game</button>':''}</div>`;
     if (game) h+=`<div class="tip">${GAMES[game.type].help}</div>`;
-    h+=`<div class="row"><button class="${st.voice?'on':''}" data-act="voice">Voice commands</button><button class="${st.record?'on':''}" data-act="record">Record shots</button><span class="tip">After a shot say "yes" or "again" (or press <kbd>Enter</kbd>) to set it up again · "next" · "back" · "score"</span></div>`;
+    h+=`<div class="row"><button class="${st.voice?'on':''}" data-act="voice">Voice commands</button><button class="${st.record?'on':''}" data-act="record">Record shots</button><button class="${st.aids!==false?'on':''}" data-act="aids">Shot guides</button><span class="tip">After a shot say "yes" or "again" (or press <kbd>Enter</kbd>) to set it up again · "next" · "back" · "score"</span></div>`;
     if (!game) h+=`<div class="tip"><kbd>S</kbd> score now · <kbd>A</kbd> re-arm auto-score · <kbd>→</kbd>/<kbd>PgDn</kbd>/<kbd>Space</kbd> next · <kbd>←</kbd>/<kbd>PgUp</kbd> prev (any presentation clicker works) · <kbd>F</kbd> flip ↔ · <kbd>V</kbd> flip ↕ · <kbd>R</kbd> random rack · <kbd>B</kbd> blackout · <kbd>H</kbd> hide this panel · <kbd>E</kbd> edit · <kbd>C</kbd> calibrate</div>`;
   }
   panel.innerHTML=h;
@@ -419,6 +422,7 @@ panel.addEventListener('click', e=>{
     case 'camTest': capture().then(det=>{ result = det ? {u:det.u,v:det.v,label:'Detected'} : null; if(!det) toast('Cue ball not found — adjust White ≥ / Max tint'); render(); }); return;
     case 'screenView': st.screenView=!st.screenView; break;
     case 'emptyRef': captureEmpty(); return;
+    case 'aids': st.aids = st.aids===false; break;
     case 'record': st.record=!st.record; if(!st.record) recEnd(false); else toast('Recording on — each shot is saved to Downloads (Chrome may ask to allow multiple downloads: click Allow)'); break;
     case 'voice': st.voice=!st.voice; if(st.voice){ voiceOn(); speak('Voice commands on. Say yes or again to reset the balls, or next for the next drill.'); } else voiceOff(); break;
     case 'speak': st.speak = st.speak===false; if(st.speak) speak('Feedback on'); break;
@@ -441,6 +445,8 @@ panel.addEventListener('change', e=>{
   else if(a==='rackN'){ st.rackN=+v; save(); }
   else if(a==='usbRes'){ st.usbRes=v; save(); }
   else if(a==='camTol'){ st.cam.tol=+v; save(); }
+  else if(a==='tipPreset'){ const d=drill(); d.tip=TIP_PRESETS[v].slice(0,2); d.speed=shotSpec(d).speed; save(); render(); }
+  else if(a==='speedSel'){ const d=drill(); d.tip=shotSpec(d).tip; d.speed=+v; save(); render(); }
   else if(a==='camHeight'){ st.cam.height=Math.max(0,+v||0); save(); }
   else if(a==='camDev'){ st.cam.dev=v; save(); startCam(); }
 });
@@ -563,6 +569,7 @@ function drawOv(){
   (st.cam.side||[]).forEach((p,i)=>{ if(!p) return; ovx.fillStyle='#ff0'; ovx.beginPath(); ovx.arc(p[0]*ov.width,p[1]*ov.height,4,0,7); ovx.fill(); ovx.fillText('S'+(i+1),p[0]*ov.width+7,p[1]*ov.height-7); });
   ovx.fillStyle='#0ff';
   P.forEach((p,i)=>{ ovx.beginPath(); ovx.arc(p[0]*ov.width,p[1]*ov.height,5,0,7); ovx.fill(); ovx.fillText(i+1,p[0]*ov.width+8,p[1]*ov.height-8); });
+  if(P.length===4 && vid.videoWidth && mode==='play') drawAidsOnCamera(game?(game.over?[]:game.items):drill().items, game?null:shotSpec(drill()));
   if(P.length===4 && vid.videoWidth && mode==='play'){ const H_=camH(1,1), k=ov.width/vid.videoWidth;
     placeItems().forEach(it=>{ const [su,sv]=toSeen(it.u,it.v), [x,y]=camMap(H_,su,sv), [x2,y2]=camMap(H_,su+R/W(),sv), [x3,y3]=camMap(H_,su,sv+R/H());
       const r=Math.max(4,Math.max(Math.hypot(x2-x,y2-y),Math.hypot(x3-x,y3-y))*k), key=it.u.toFixed(4)+','+it.v.toFixed(4), ok=placed?placed[key]:null;
@@ -1241,6 +1248,83 @@ function recEnd(save, info){ if(!rec) return; const r=rec; rec=null;
   try{ r.stop(); }catch(e){} }
 function dl(blob,name){ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),20000); }
 setInterval(()=>{ if(rec && Date.now()-recStart>45000){ recEnd(true,['(stopped after 45 s without a score)']); } }, 2000);
+
+// ---------- shot aids (like the projector systems: object-ball line, ghost ball, cut angle, cue-ball path, target zone, tip + speed) ----------
+const TIP_PRESETS={center:[0,0,'Center'],stop:[0,-.2,'Stop (slightly below center)'],draw:[0,-.6,'Draw (low)'],follow:[0,.5,'Follow (high)'],
+  left:[-.5,0,'Left english'],right:[.5,0,'Right english'],lowleft:[-.4,-.45,'Low left'],lowright:[.4,-.45,'Low right'],highleft:[-.4,.4,'High left'],highright:[.4,.4,'High right']};
+function shotSpec(d){
+  if(d.tip||d.speed) return {tip:d.tip||[0,0], speed:d.speed||3};
+  const n=(d.name||'').toLowerCase();
+  if(/draw/.test(n)) return {tip:[0,-.6],speed:3};
+  if(/follow/.test(n)) return {tip:[0,.5],speed:2};
+  if(/stop|mighty|stroke/.test(n)) return {tip:[0,-.2],speed:2};
+  if(/stun/.test(n)) return {tip:[0,-.1],speed:3};
+  if(/lag|distance|speed/.test(n)) return {tip:[0,.15],speed:2};
+  return {tip:[0,0],speed:3};
+}
+// Geometry in inches for the current drill/game items.
+function shotAids(items){
+  const w=W(), h=H(), I=p=>[p[0]*w,p[1]*h], out={shots:[],paths:[],targets:[]};
+  const cue=items.find(it=>it.t==='ball'&&it.n===0), cb=cue?I([cue.u,cue.v]):null;
+  items.filter(it=>it.t==='line'&&it.style==='ob').forEach(L=>{
+    const a=I(L.pts[0]), z=I(L.pts[L.pts.length-1]), ob=items.find(it=>it.t==='ball'&&it.n>0&&Math.hypot(it.u*w-a[0],it.v*h-a[1])<2);
+    if(!ob) return; const o=I([ob.u,ob.v]), dx=z[0]-o[0], dy=z[1]-o[1], L0=Math.hypot(dx,dy)||1, ux=dx/L0, uy=dy/L0;
+    const g=[o[0]-ux*BALL_D, o[1]-uy*BALL_D]; let cut=null;
+    if(cb){ const ax=g[0]-cb[0], ay=g[1]-cb[1], La=Math.hypot(ax,ay)||1; cut=Math.acos(Math.max(-1,Math.min(1,(ax*ux+ay*uy)/La)))*180/Math.PI; }
+    out.shots.push({ob:o, pocket:z, ghost:g, cb, cut, n:ob.n}); });
+  items.filter(it=>it.t==='line'&&it.style==='kick').forEach(L=>out.paths.push(L.pts.map(I)));
+  items.filter(it=>it.t==='target').forEach(T=>out.targets.push({c:I([T.u,T.v]),r:T.r}));
+  return out;
+}
+const AID='#9ff5e6';
+function textAlong(x1,y1,x2,y2,str,size,off){ let ang=Math.atan2(y2-y1,x2-x1)*180/Math.PI; if(ang>90) ang-=180; if(ang<-90) ang+=180;
+  const mx=(x1+x2)/2, my=(y1+y2)/2, nx=-(y2-y1), ny=(x2-x1), nl=Math.hypot(nx,ny)||1, o=off||1.4;
+  return `<text transform="translate(${mx+nx/nl*o},${my+ny/nl*o}) rotate(${ang})" font-size="${size}" font-weight="700" fill="${AID}" text-anchor="middle" dominant-baseline="central">${esc(str)}</text>`; }
+// on-screen table version (table inches; flips handled via fx/fy on normalized coords)
+function aidSVG(items, spec){
+  if(st.aids===false) return ''; const A=shotAids(items), w=W(), h=H(), X=p=>fx(p[0]/w), Y=p=>fy(p[1]/h); let s='';
+  A.targets.forEach(T=> s+=`<circle cx="${X(T.c)}" cy="${Y(T.c)}" r="${T.r}" fill="${AID}" fill-opacity=".22"/>`);
+  A.shots.forEach(S=>{ s+=`<line x1="${X(S.ob)}" y1="${Y(S.ob)}" x2="${X(S.pocket)}" y2="${Y(S.pocket)}" stroke="${AID}" stroke-width=".2"/>`;
+    s+=textAlong(X(S.ob),Y(S.ob),X(S.pocket),Y(S.pocket),'Object Ball',1.5);
+    s+=`<circle cx="${X(S.ghost)}" cy="${Y(S.ghost)}" r="${R}" fill="none" stroke="${AID}" stroke-width=".22" stroke-dasharray=".5 .35"/><circle cx="${X(S.ghost)}" cy="${Y(S.ghost)}" r=".35" fill="${AID}"/>`;
+    if(S.cb){ s+=`<line x1="${X(S.cb)}" y1="${Y(S.cb)}" x2="${X(S.ghost)}" y2="${Y(S.ghost)}" stroke="${AID}" stroke-width=".2"/>`;
+      s+=textAlong(X(S.cb),Y(S.cb),X(S.ghost),Y(S.ghost),`${Math.round(S.cut)}°`,1.8); } });
+  A.paths.forEach(P=>{ for(let i=1;i<P.length;i++) s+=`<line x1="${X(P[i-1])}" y1="${Y(P[i-1])}" x2="${X(P[i])}" y2="${Y(P[i])}" stroke="${AID}" stroke-width=".2"/>`;
+    if(P.length>1) s+=textAlong(X(P[0]),Y(P[0]),X(P[1]),Y(P[1]),'Cue Ball',1.5); });
+  // tip + speed glyph next to the cue ball
+  const cue=items.find(it=>it.t==='ball'&&it.n===0);
+  if(cue && spec){ const r=3.2, cx=Math.max(5,Math.min(w-5,fx(cue.u)+(fx(cue.u)>w*.5?-4:4))), cy=fy(cue.v)+(fy(cue.v)<h/2?9:-9);
+    const rot=(st.screenView||st.endMount)?(st.flipX?-90:90):0;
+    s+=`<g transform="rotate(${rot} ${cx} ${cy})"><circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${AID}" stroke-width=".22"/><line x1="${cx-r}" y1="${cy}" x2="${cx+r}" y2="${cy}" stroke="${AID}" stroke-width=".1"/><line x1="${cx}" y1="${cy-r}" x2="${cx}" y2="${cy+r}" stroke="${AID}" stroke-width=".1"/>
+      <circle cx="${cx+spec.tip[0]*r*.8}" cy="${cy-spec.tip[1]*r*.8}" r=".7" fill="${AID}"/>`;
+    for(let i=0;i<5;i++) s+=`<rect x="${cx-r+i*1.32}" y="${cy+r+1}" width="1.1" height="1.2" fill="${AID}" fill-opacity="${i<spec.speed?1:.2}"/>`;
+    s+=`<text x="${cx}" y="${cy+r+3.4}" font-size="1.1" fill="${AID}" text-anchor="middle" dominant-baseline="central">speed ${spec.speed}/5</text></g>`; }
+  return s;
+}
+// live camera version: drawn on the webcam picture, on the felt
+function drawAidsOnCamera(items, spec){
+  if(st.aids===false || !st.cam.pts || st.cam.pts.length<4 || !vid.videoWidth) return;
+  const A=shotAids(items), M=camH(1,1), k=ov.width/vid.videoWidth, w=W(), h=H();
+  const felt=(p)=>{ const [a,b]=linInvert(p[0]/w,p[1]/h), [x,y]=camMap(M,a,b); return [x*k,y*k]; };
+  const ball=(p)=>{ const [a,b]=toSeen(p[0]/w,p[1]/h), [x,y]=camMap(M,a,b); return [x*k,y*k]; };
+  const line=(P,width,dash)=>{ ovx.setLineDash(dash||[]); [[7,'rgba(0,0,0,.75)'],[width||3,AID]].forEach(([lw,c])=>{ ovx.lineWidth=lw; ovx.strokeStyle=c; ovx.beginPath();
+      for(let i=1;i<P.length;i++){ for(let t=0;t<=1.001;t+=.1){ const q=[P[i-1][0]+(P[i][0]-P[i-1][0])*t, P[i-1][1]+(P[i][1]-P[i-1][1])*t], [x,y]=felt(q); (i===1&&t===0)?ovx.moveTo(x,y):ovx.lineTo(x,y); } } ovx.stroke(); }); ovx.setLineDash([]); };
+  const circ=(c,r,fill,useBall,dash)=>{ ovx.beginPath(); for(let i=0;i<=36;i++){ const a=i/36*Math.PI*2, [x,y]=(useBall?ball:felt)([c[0]+Math.cos(a)*r,c[1]+Math.sin(a)*r]); i?ovx.lineTo(x,y):ovx.moveTo(x,y); }
+    if(fill){ ovx.fillStyle='rgba(159,245,230,.28)'; ovx.fill(); } ovx.setLineDash(dash||[]); ovx.lineWidth=6; ovx.strokeStyle='rgba(0,0,0,.7)'; ovx.stroke(); ovx.lineWidth=2.5; ovx.strokeStyle=AID; ovx.stroke(); ovx.setLineDash([]); };
+  const label=(p,str,size)=>{ const [x,y]=felt(p); ovx.font=`bold ${size||15}px system-ui`; ovx.textAlign='center'; ovx.lineWidth=4; ovx.strokeStyle='#000'; ovx.strokeText(str,x,y); ovx.fillStyle=AID; ovx.fillText(str,x,y); ovx.textAlign='left'; };
+  const mid=(a,b,off)=>{ const dx=b[0]-a[0], dy=b[1]-a[1], L=Math.hypot(dx,dy)||1; return [(a[0]+b[0])/2-dy/L*(off||3),(a[1]+b[1])/2+dx/L*(off||3)]; };
+  A.targets.forEach(T=>circ(T.c,T.r,true,false));
+  A.shots.forEach(S=>{ line([S.ob,S.pocket]); label(mid(S.ob,S.pocket),'Object Ball');
+    circ(S.ghost,R,false,true,[5,4]);
+    if(S.cb){ line([S.cb,S.ghost]); label(mid(S.cb,S.ghost),`${Math.round(S.cut)}°`,18); } });
+  A.paths.forEach(P=>{ line(P); if(P.length>1) label(mid(P[0],P[1]),'Cue Ball'); });
+  // tip + speed HUD in the corner of the camera picture
+  if(spec){ const x0=ov.width-92, y0=ov.height-110, r=34; ovx.fillStyle='rgba(0,0,0,.6)'; ovx.fillRect(x0-44,y0-44,100,120);
+    ovx.lineWidth=2.5; ovx.strokeStyle=AID; ovx.beginPath(); ovx.arc(x0,y0,r,0,7); ovx.stroke(); ovx.lineWidth=1; ovx.beginPath(); ovx.moveTo(x0-r,y0); ovx.lineTo(x0+r,y0); ovx.moveTo(x0,y0-r); ovx.lineTo(x0,y0+r); ovx.stroke();
+    ovx.fillStyle=AID; ovx.beginPath(); ovx.arc(x0+spec.tip[0]*r*.8, y0-spec.tip[1]*r*.8, 7, 0, 7); ovx.fill();
+    for(let i=0;i<5;i++){ ovx.globalAlpha=i<spec.speed?1:.25; ovx.fillRect(x0-r+i*14, y0+r+10, 11, 10); } ovx.globalAlpha=1;
+    ovx.font='bold 12px system-ui'; ovx.textAlign='center'; ovx.fillText(`TIP · SPEED ${spec.speed}/5`, x0+6, y0+r+34); ovx.textAlign='left'; }
+}
 // ---------- keyboard ----------
 addEventListener('keydown', e=>{
   if(/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { if(e.key==='Escape') document.activeElement.blur(); return; }
