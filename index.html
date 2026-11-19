@@ -1263,17 +1263,49 @@ function shotSpec(d){
   return {tip:[0,0],speed:3};
 }
 // Geometry in inches for the current drill/game items.
-function shotAids(items){
+function shotAids(items, spec){
   const w=W(), h=H(), I=p=>[p[0]*w,p[1]*h], out={shots:[],paths:[],targets:[]};
   const cue=items.find(it=>it.t==='ball'&&it.n===0), cb=cue?I([cue.u,cue.v]):null;
   items.filter(it=>it.t==='line'&&it.style==='ob').forEach(L=>{
-    const a=I(L.pts[0]), z=I(L.pts[L.pts.length-1]), ob=items.find(it=>it.t==='ball'&&it.n>0&&Math.hypot(it.u*w-a[0],it.v*h-a[1])<2);
+    const a=I(L.pts[0]), z=I(L.pts[1]), ob=items.find(it=>it.t==='ball'&&it.n>0&&Math.hypot(it.u*w-a[0],it.v*h-a[1])<2);   // first leg sets the cut (banks have more legs)
     if(!ob) return; const o=I([ob.u,ob.v]), dx=z[0]-o[0], dy=z[1]-o[1], L0=Math.hypot(dx,dy)||1, ux=dx/L0, uy=dy/L0;
     const g=[o[0]-ux*BALL_D, o[1]-uy*BALL_D]; let cut=null;
     if(cb){ const ax=g[0]-cb[0], ay=g[1]-cb[1], La=Math.hypot(ax,ay)||1; cut=Math.acos(Math.max(-1,Math.min(1,(ax*ux+ay*uy)/La)))*180/Math.PI; }
-    out.shots.push({ob:o, pocket:z, ghost:g, cb, cut, n:ob.n}); });
+    out.shots.push({ob:o, pocket:z, path:L.pts.map(I), ghost:g, cb, cut, n:ob.n}); });
   items.filter(it=>it.t==='line'&&it.style==='kick').forEach(L=>out.paths.push(L.pts.map(I)));
   items.filter(it=>it.t==='target').forEach(T=>out.targets.push({c:I([T.u,T.v]),r:T.r}));
+  // predicted cue-ball path after contact, from the tip setting (simple model: tangent line bent by follow/draw, rails reflect)
+  out.pred=[]; const tipX=spec?spec.tip[0]:0, tipY=spec?spec.tip[1]:0, spd=spec?spec.speed:3;
+  out.shots.forEach(S=>{ if(!S.cb) return;
+    const ax=S.ghost[0]-S.cb[0], ay=S.ghost[1]-S.cb[1], La=Math.hypot(ax,ay)||1, a=[ax/La,ay/La];
+    const ux=S.pocket[0]-S.ob[0], uy=S.pocket[1]-S.ob[1], Lu=Math.hypot(ux,uy)||1, u=[ux/Lu,uy/Lu];
+    const dot=a[0]*u[0]+a[1]*u[1]; let t=[a[0]-dot*u[0], a[1]-dot*u[1]]; const Lt=Math.hypot(t[0],t[1]);
+    const straight = Lt<.09;   // ~5 degrees or less: nearly straight in
+    t = straight ? [0,0] : [t[0]/Lt, t[1]/Lt];
+    const bend = tipY>0.1 ? tipY*1.6 : tipY<-0.3 ? tipY*1.6 : tipY<-0.05 ? 0 : tipY*1.2;   // + forward, - back
+    if(straight && Math.abs(bend)<.15){ out.pred.push({pts:[S.ghost], stop:true}); return; }
+    let d=[t[0]+u[0]*bend, t[1]+u[1]*bend]; const Ld=Math.hypot(d[0],d[1])||1; d=[d[0]/Ld,d[1]/Ld];
+    let len = straight ? 4+spd*Math.abs(bend)*9 : (6+spd*13)*(.55+.45*Math.sqrt(Math.max(0,1-dot*dot)));
+    // first ~5" follow the tangent, then the bent direction (gives the curve)
+    const pts=[S.ghost.slice()]; let p=S.ghost.slice(), dir=straight?d:t.slice();
+    const lim=[R,w-R,R,h-R]; let rails=0, step=.5, travelled=0, english=tipX*0.25;
+    while(travelled<len && pts.length<400){
+      if(!straight && travelled<6){ const f=travelled/6; dir=[t[0]*(1-f)+d[0]*f, t[1]*(1-f)+d[1]*f]; const L=Math.hypot(dir[0],dir[1])||1; dir=[dir[0]/L,dir[1]/L]; }
+      else dir=dir===t?d:dir;
+      p=[p[0]+dir[0]*step, p[1]+dir[1]*step]; travelled+=step;
+      let hit=false;
+      if(p[0]<lim[0]||p[0]>lim[1]){ dir=[-dir[0],dir[1]]; p[0]=Math.max(lim[0],Math.min(lim[1],p[0])); hit=true; }
+      if(p[1]<lim[2]||p[1]>lim[3]){ dir=[dir[0],-dir[1]]; p[1]=Math.max(lim[2],Math.min(lim[3],p[1])); hit=true; }
+      if(hit){ rails++; const c=Math.cos(english), s_=Math.sin(english); dir=[dir[0]*c-dir[1]*s_, dir[0]*s_+dir[1]*c]; len=travelled+(len-travelled)*.7; pts.push(p.slice()); if(rails>2) break; d=dir; t=dir; }
+      if(pts.length===1 || Math.hypot(p[0]-pts[pts.length-1][0],p[1]-pts[pts.length-1][1])>1.5) pts.push(p.slice()); }
+    pts.push(p.slice()); out.pred.push({pts, rails}); });
+  // rail contact points on planned kick/bank paths: diamond number + mirror-image aim line
+  out.rails=[];
+  items.filter(it=>it.t==='line'&&(it.style==='kick'||it.style==='ob')&&it.pts.length>=3).forEach(L=>{
+    for(let i=1;i<L.pts.length-1;i++){ const q=I(L.pts[i]); const dn=[q[0],w-q[0],q[1],h-q[1]], k=dn.indexOf(Math.min(...dn)); if(dn[k]>R+1.5) continue;
+      const along = k<2 ? q[1]/h*4 : q[0]/w*8, prev=I(L.pts[i-1]), next=I(L.pts[i+1]);
+      const mir = k===0?[-next[0],next[1]] : k===1?[2*w-next[0],next[1]] : k===2?[next[0],-next[1]] : [next[0],2*h-next[1]];
+      out.rails.push({at:q, from:prev, mirror:mir, diamond:along, side:k}); } });
   return out;
 }
 const AID='#9ff5e6';
@@ -1282,9 +1314,14 @@ function textAlong(x1,y1,x2,y2,str,size,off){ let ang=Math.atan2(y2-y1,x2-x1)*18
   return `<text transform="translate(${mx+nx/nl*o},${my+ny/nl*o}) rotate(${ang})" font-size="${size}" font-weight="700" fill="${AID}" text-anchor="middle" dominant-baseline="central">${esc(str)}</text>`; }
 // on-screen table version (table inches; flips handled via fx/fy on normalized coords)
 function aidSVG(items, spec){
-  if(st.aids===false) return ''; const A=shotAids(items), w=W(), h=H(), X=p=>fx(p[0]/w), Y=p=>fy(p[1]/h); let s='';
+  if(st.aids===false) return ''; const A=shotAids(items, spec), w=W(), h=H(), X=p=>fx(p[0]/w), Y=p=>fy(p[1]/h); let s='';
+  (A.pred||[]).forEach(P=>{ if(P.stop){ s+=`<circle cx="${X(P.pts[0])}" cy="${Y(P.pts[0])}" r="${R+.7}" fill="none" stroke="#fff" stroke-width=".18" stroke-dasharray=".25 .35"/>`; return; }
+    s+=`<polyline points="${P.pts.map(q=>X(q)+','+Y(q)).join(' ')}" fill="none" stroke="#fff" stroke-opacity=".8" stroke-width=".22" stroke-dasharray=".3 .45" stroke-linecap="round"/>`;
+    const e=P.pts[P.pts.length-1]; s+=`<circle cx="${X(e)}" cy="${Y(e)}" r="${R}" fill="#fff" fill-opacity=".18" stroke="#fff" stroke-opacity=".6" stroke-width=".15"/>`; });
+  (A.rails||[]).forEach(Q=>{ s+=`<line x1="${X(Q.from)}" y1="${Y(Q.from)}" x2="${X(Q.mirror)}" y2="${Y(Q.mirror)}" stroke="${AID}" stroke-opacity=".45" stroke-width=".15" stroke-dasharray=".6 .5"/>`;
+    s+=`<text x="${X(Q.at)}" y="${Y(Q.at)}" dy="${Q.side===2?-2.2:Q.side===3?2.2:0}" dx="${Q.side===0?-3:Q.side===1?3:0}" font-size="1.5" font-weight="700" fill="${AID}" text-anchor="middle" dominant-baseline="central">◆${Q.diamond.toFixed(1)}</text>`; });
   A.targets.forEach(T=> s+=`<circle cx="${X(T.c)}" cy="${Y(T.c)}" r="${T.r}" fill="${AID}" fill-opacity=".22"/>`);
-  A.shots.forEach(S=>{ s+=`<line x1="${X(S.ob)}" y1="${Y(S.ob)}" x2="${X(S.pocket)}" y2="${Y(S.pocket)}" stroke="${AID}" stroke-width=".2"/>`;
+  A.shots.forEach(S=>{ s+=`<polyline points="${S.path.map(q=>X(q)+','+Y(q)).join(' ')}" fill="none" stroke="${AID}" stroke-width=".2"/>`;
     s+=textAlong(X(S.ob),Y(S.ob),X(S.pocket),Y(S.pocket),'Object Ball',1.5);
     s+=`<circle cx="${X(S.ghost)}" cy="${Y(S.ghost)}" r="${R}" fill="none" stroke="${AID}" stroke-width=".22" stroke-dasharray=".5 .35"/><circle cx="${X(S.ghost)}" cy="${Y(S.ghost)}" r=".35" fill="${AID}"/>`;
     if(S.cb){ s+=`<line x1="${X(S.cb)}" y1="${Y(S.cb)}" x2="${X(S.ghost)}" y2="${Y(S.ghost)}" stroke="${AID}" stroke-width=".2"/>`;
@@ -1304,7 +1341,7 @@ function aidSVG(items, spec){
 // live camera version: drawn on the webcam picture, on the felt
 function drawAidsOnCamera(items, spec){
   if(st.aids===false || !st.cam.pts || st.cam.pts.length<4 || !vid.videoWidth) return;
-  const A=shotAids(items), M=camH(1,1), k=ov.width/vid.videoWidth, w=W(), h=H();
+  const A=shotAids(items, spec), M=camH(1,1), k=ov.width/vid.videoWidth, w=W(), h=H();
   const felt=(p)=>{ const [a,b]=linInvert(p[0]/w,p[1]/h), [x,y]=camMap(M,a,b); return [x*k,y*k]; };
   const ball=(p)=>{ const [a,b]=toSeen(p[0]/w,p[1]/h), [x,y]=camMap(M,a,b); return [x*k,y*k]; };
   const line=(P,width,dash)=>{ ovx.setLineDash(dash||[]); [[7,'rgba(0,0,0,.75)'],[width||3,AID]].forEach(([lw,c])=>{ ovx.lineWidth=lw; ovx.strokeStyle=c; ovx.beginPath();
@@ -1314,10 +1351,14 @@ function drawAidsOnCamera(items, spec){
   const label=(p,str,size)=>{ const [x,y]=felt(p); ovx.font=`bold ${size||15}px system-ui`; ovx.textAlign='center'; ovx.lineWidth=4; ovx.strokeStyle='#000'; ovx.strokeText(str,x,y); ovx.fillStyle=AID; ovx.fillText(str,x,y); ovx.textAlign='left'; };
   const mid=(a,b,off)=>{ const dx=b[0]-a[0], dy=b[1]-a[1], L=Math.hypot(dx,dy)||1; return [(a[0]+b[0])/2-dy/L*(off||3),(a[1]+b[1])/2+dx/L*(off||3)]; };
   A.targets.forEach(T=>circ(T.c,T.r,true,false));
-  A.shots.forEach(S=>{ line([S.ob,S.pocket]); label(mid(S.ob,S.pocket),'Object Ball');
+  A.shots.forEach(S=>{ line(S.path); label(mid(S.ob,S.pocket),'Object Ball');
     circ(S.ghost,R,false,true,[5,4]);
     if(S.cb){ line([S.cb,S.ghost]); label(mid(S.cb,S.ghost),`${Math.round(S.cut)}°`,18); } });
   A.paths.forEach(P=>{ line(P); if(P.length>1) label(mid(P[0],P[1]),'Cue Ball'); });
+  (A.pred||[]).forEach(P=>{ if(P.stop){ const [x,y]=ball(P.pts[0]); label(P.pts[0],'stop here',13); return; }
+    ovx.setLineDash([3,6]); ovx.lineCap='round'; [[6,'rgba(0,0,0,.6)'],[2.5,'#ffffff']].forEach(([lw,c])=>{ ovx.lineWidth=lw; ovx.strokeStyle=c; ovx.beginPath(); P.pts.forEach((q,i)=>{ const [x,y]=felt(q); i?ovx.lineTo(x,y):ovx.moveTo(x,y); }); ovx.stroke(); });
+    ovx.setLineDash([]); ovx.lineCap='butt'; const e=P.pts[P.pts.length-1]; circ(e,R,false,true,[2,3]); label([e[0],e[1]-3.2],'predicted',12); });
+  (A.rails||[]).forEach(Q=>{ line([Q.from,Q.mirror],1.5,[6,6]); label(Q.at,'\u25C6'+Q.diamond.toFixed(1),15); });
   // tip + speed HUD in the corner of the camera picture
   if(spec){ const x0=ov.width-92, y0=ov.height-110, r=34; ovx.fillStyle='rgba(0,0,0,.6)'; ovx.fillRect(x0-44,y0-44,100,120);
     ovx.lineWidth=2.5; ovx.strokeStyle=AID; ovx.beginPath(); ovx.arc(x0,y0,r,0,7); ovx.stroke(); ovx.lineWidth=1; ovx.beginPath(); ovx.moveTo(x0-r,y0); ovx.lineTo(x0+r,y0); ovx.moveTo(x0,y0-r); ovx.lineTo(x0,y0+r); ovx.stroke();
