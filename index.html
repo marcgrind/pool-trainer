@@ -244,6 +244,7 @@ function render(){
   }
   if (mode!=='cal' && mode!=='cam'){
     if (game && mode==='play'){ s+=gameSVG(); s+=trailSVG(); s+=placementSVG(); s+=camStatus(); if (result) s+=markerSVG(result); svg.innerHTML=s; return finishRender(); }
+    if (mode==='play' && adviceOn){ s+=adviceSVG(); svg.innerHTML=s; return finishRender(); }
     if (mode!=='edit') s+=aidSVG(d.items, shotSpec(d));
     d.items.forEach((it,i)=> s+=itemSVG(it, mode==='edit' && i===sel));
     if (mode==='play') s+=trailSVG()+placementSVG();
@@ -369,7 +370,7 @@ function buildPanel(){
   if (mode==='play'){
     h+=`<div class="row"><span class="lbl">Games</span>${Object.entries(GAMES).map(([k,g])=>`<button class="${game&&game.type===k?'on':''}" data-act="game" data-v="${k}">${g.title}</button>`).join('')}${game?'<button data-act="quitGame">Quit game</button>':''}</div>`;
     if (game) h+=`<div class="tip">${GAMES[game.type].help}</div>`;
-    h+=`<div class="row"><button class="${st.voice?'on':''}" data-act="voice">Voice commands</button><button class="${st.record?'on':''}" data-act="record">Record shots</button><button class="${st.aids!==false?'on':''}" data-act="aids">Shot guides</button><span class="tip">After a shot say "yes" or "again" (or press <kbd>Enter</kbd>) to set it up again · "next" · "back" · "score"</span></div>`;
+    h+=`<div class="row"><button class="${st.voice?'on':''}" data-act="voice">Voice commands</button><button class="${st.record?'on':''}" data-act="record">Record shots</button><button class="${st.aids!==false?'on':''}" data-act="aids">Shot guides</button><button class="${adviceOn?'on':''}" data-act="advice" title="Find all balls and suggest the best shots (O)">Shot options</button><span class="tip">After a shot say "yes" or "again" (or press <kbd>Enter</kbd>) to set it up again · "next" · "back" · "score"</span></div>`;
     if (!game) h+=`<div class="tip"><kbd>S</kbd> score now · <kbd>A</kbd> re-arm auto-score · <kbd>→</kbd>/<kbd>PgDn</kbd>/<kbd>Space</kbd> next · <kbd>←</kbd>/<kbd>PgUp</kbd> prev (any presentation clicker works) · <kbd>F</kbd> flip ↔ · <kbd>V</kbd> flip ↕ · <kbd>R</kbd> random rack · <kbd>B</kbd> blackout · <kbd>H</kbd> hide this panel · <kbd>E</kbd> edit · <kbd>C</kbd> calibrate</div>`;
   }
   panel.innerHTML=h;
@@ -422,6 +423,7 @@ panel.addEventListener('click', e=>{
     case 'camTest': capture().then(det=>{ result = det ? {u:det.u,v:det.v,label:'Detected'} : null; if(!det) toast('Cue ball not found — adjust White ≥ / Max tint'); render(); }); return;
     case 'screenView': st.screenView=!st.screenView; break;
     case 'emptyRef': captureEmpty(); return;
+    case 'advice': adviceOn=!adviceOn; advice=null; showFeedback([]); if(adviceOn) runAdvice(); break;
     case 'aids': st.aids = st.aids===false; break;
     case 'record': st.record=!st.record; if(!st.record) recEnd(false); else toast('Recording on — each shot is saved to Downloads (Chrome may ask to allow multiple downloads: click Allow)'); break;
     case 'voice': st.voice=!st.voice; if(st.voice){ voiceOn(); speak('Voice commands on. Say yes or again to reset the balls, or next for the next drill.'); } else voiceOff(); break;
@@ -569,8 +571,9 @@ function drawOv(){
   (st.cam.side||[]).forEach((p,i)=>{ if(!p) return; ovx.fillStyle='#ff0'; ovx.beginPath(); ovx.arc(p[0]*ov.width,p[1]*ov.height,4,0,7); ovx.fill(); ovx.fillText('S'+(i+1),p[0]*ov.width+7,p[1]*ov.height-7); });
   ovx.fillStyle='#0ff';
   P.forEach((p,i)=>{ ovx.beginPath(); ovx.arc(p[0]*ov.width,p[1]*ov.height,5,0,7); ovx.fill(); ovx.fillText(i+1,p[0]*ov.width+8,p[1]*ov.height-8); });
-  if(P.length===4 && vid.videoWidth && mode==='play') drawAidsOnCamera(game?(game.over?[]:game.items):drill().items, game?null:shotSpec(drill()));
-  if(P.length===4 && vid.videoWidth && mode==='play'){ const H_=camH(1,1), k=ov.width/vid.videoWidth;
+  if(P.length===4 && vid.videoWidth && mode==='play' && adviceOn) drawAdviceOnCamera();
+  else if(P.length===4 && vid.videoWidth && mode==='play') drawAidsOnCamera(game?(game.over?[]:game.items):drill().items, game?null:shotSpec(drill()));
+  if(P.length===4 && vid.videoWidth && mode==='play' && !adviceOn){ const H_=camH(1,1), k=ov.width/vid.videoWidth;
     placeItems().forEach(it=>{ const [su,sv]=toSeen(it.u,it.v), [x,y]=camMap(H_,su,sv), [x2,y2]=camMap(H_,su+R/W(),sv), [x3,y3]=camMap(H_,su,sv+R/H());
       const r=Math.max(4,Math.max(Math.hypot(x2-x,y2-y),Math.hypot(x3-x,y3-y))*k), key=it.u.toFixed(4)+','+it.v.toFixed(4), ok=placed?placed[key]:null;
       // colours chosen to stand out on any felt (red, blue or green): black outline under a bright ring
@@ -1442,6 +1445,72 @@ function stillAnalysis(A, det){
   } else if(!det) lines.push('Couldn’t find the cue ball after the shot (scratch?)');
   return {lines, cb:[], obs:[], made};
 }
+
+// ---------- shot options: find every ball on the table and suggest the best shots ----------
+var advice=null, adviceOn=false;
+function hueName(c){ const [r,g,b]=c, mx=Math.max(r,g,b), mn=Math.min(r,g,b), d=mx-mn||1; let hh = mx===r ? ((g-b)/d)%6 : mx===g ? (b-r)/d+2 : (r-g)/d+4; hh*=60; if(hh<0) hh+=360;
+  if(mx<70) return 'black'; if(d<35) return mx>170?'white':'grey';
+  if(hh<12||hh>=340) return mx<140?'maroon':'red'; if(hh<35) return 'orange'; if(hh<70) return 'yellow'; if(hh<170) return 'green'; if(hh<255) return 'blue'; return 'purple'; }
+function findBalls(A){
+  const F=feltChroma(A), N=A.gw*A.gh, mask=new Uint8Array(N), m=Math.round(R*P*.6);
+  for(let y=m;y<A.gh-m;y++) for(let x=m;x<A.gw-m;x++){ const k=y*A.gw+x, o=k*3, r=A.px[o],g=A.px[o+1],b=A.px[o+2], t=r+g+b+1;
+    if(Math.hypot(r/t-F[0],g/t-F[1])>.07 || t>F[2]*1.45 || t<F[2]*.55) mask[k]=1; }
+  const lab=new Uint8Array(N), q=new Int32Array(N), target=Math.PI*(R*P)**2, out=[];
+  for(let s0=0;s0<N;s0++){ if(!mask[s0]||lab[s0]) continue; let h=0,t=0,n=0,sx=0,sy=0,x0=1e9,x1=-1,y0=1e9,y1=-1,cr=0,cg=0,cb=0; q[t++]=s0; lab[s0]=1;
+    while(h<t){ const p=q[h++], px=p%A.gw, py=(p/A.gw)|0; n++; sx+=px; sy+=py; cr+=A.px[p*3]; cg+=A.px[p*3+1]; cb+=A.px[p*3+2];
+      if(px<x0)x0=px; if(px>x1)x1=px; if(py<y0)y0=py; if(py>y1)y1=py;
+      for(const nb of [p-1,p+1,p-A.gw,p+A.gw]){ if(nb<0||nb>=N||(nb===p-1&&px===0)||(nb===p+1&&px===A.gw-1)) continue; if(mask[nb]&&!lab[nb]){ lab[nb]=1; q[t++]=nb; } } }
+    const bw=x1-x0+1, bh=y1-y0+1, ratio=n/target, asp=bw/bh, fill=n/(bw*bh);
+    if(ratio<.35||ratio>2.6||asp<.5||asp>2||fill<.4) continue;
+    const [u,v]=toTrue((sx/n+.5)/A.gw,(sy/n+.5)/A.gh); out.push({u,v,col:[cr/n,cg/n,cb/n],name:hueName([cr/n,cg/n,cb/n])}); }
+  return out; }
+function segBlocked(a,b,balls,skip,w,h){ const ax=a[0],ay=a[1],dx=b[0]-ax,dy=b[1]-ay,L=dx*dx+dy*dy||1;
+  return balls.some(o=>{ if(skip.includes(o)) return false; const px=o.u*w, py=o.v*h; let t=((px-ax)*dx+(py-ay)*dy)/L; if(t<=0||t>=1) return false; return Math.hypot(px-ax-t*dx,py-ay-t*dy)<BALL_D*.98; }); }
+function shotOptions(A){
+  const w=W(), h=H(), cue=detect(A); if(!cue) return {err:'Couldn’t find the cue ball'};
+  const balls=findBalls(A).filter(b=>Math.hypot((b.u-cue.u)*w,(b.v-cue.v)*h)>BALL_D*.8);
+  const all=balls.concat([cue]), cb=[cue.u*w,cue.v*h], opts=[];
+  const pockets=[[0,0,'corner'],[.5,0,'side'],[1,0,'corner'],[0,1,'corner'],[.5,1,'side'],[1,1,'corner']];
+  balls.forEach(o=>{ const ob=[o.u*w,o.v*h];
+    pockets.forEach(([pu,pv,kind])=>{ const pk=[pu*w,pv*h], dx=pk[0]-ob[0], dy=pk[1]-ob[1], Lp=Math.hypot(dx,dy); if(Lp<1) return;
+      const ux=dx/Lp, uy=dy/Lp, gh=[ob[0]-ux*BALL_D, ob[1]-uy*BALL_D], ax=gh[0]-cb[0], ay=gh[1]-cb[1], La=Math.hypot(ax,ay); if(La<1) return;
+      const cut=Math.acos(Math.max(-1,Math.min(1,(ax*ux+ay*uy)/La)))*180/Math.PI; if(cut>72) return;
+      if(kind==='side' && Math.abs(uy)<Math.cos(55*Math.PI/180)) return;    // too shallow into a side pocket
+      if(segBlocked(cb,gh,all,[o,cue],w,h) || segBlocked(ob,pk,all,[o,cue],w,h)) return;
+      const diff = (La+Lp*1.6) * (1/Math.max(.25,Math.cos(cut*Math.PI/180)));
+      const side = pu===.5 ? 'side' : (pu===0 ? 'head' : 'foot');
+      opts.push({o,ob,pk,gh,cut,La,Lp,diff,where:`${side} ${kind==='side'?'':'corner'}`.trim()+(kind==='side'?' pocket':''),
+        pocketName:`${pu===.5?'side':(pu===0?'head':'foot')+' corner'} ${pv===0?'(rail A)':'(rail B)'}`}); }); });
+  opts.sort((a,b)=>a.diff-b.diff);
+  // keep the best option per ball, then the top 3
+  const seen=new Set(), top=[]; for(const x of opts){ if(seen.has(x.o)) continue; seen.add(x.o); top.push(x); if(top.length===3) break; }
+  return {cue,balls,top};
+}
+function adviceText(a){
+  if(a.err) return [a.err];
+  if(!a.top.length) return [`${a.balls.length} ball${a.balls.length===1?'':'s'} found — no clear pot from here. Look for a safety or a kick.`];
+  const L=[`${a.balls.length} ball${a.balls.length===1?'':'s'} found. Best options:`];
+  a.top.forEach((x,i)=>{ const tip = x.cut<12 ? 'nearly straight — stop or draw to stay in line' : x.cut<35 ? 'medium cut — stun or follow to control the cue ball' : 'thin cut — firm, center ball; cue ball runs off near the tangent line';
+    L.push(`${i+1}) ${x.o.name} ball → ${x.pocketName.replace(/ \(rail [AB]\)/,'')}: ${Math.round(x.cut)}° cut, ${Math.round(x.La)}" to contact — ${tip}`); });
+  return L; }
+function adviceSVG(){ if(!advice||!advice.top) return ''; const w=W(),h=H(), X=p=>fx(p[0]/w), Y=p=>fy(p[1]/h); let s='';
+  const cols=['#39ff14','#ffd400','#00e5ff'];
+  advice.balls.forEach(b=> s+=`<circle cx="${fx(b.u)}" cy="${fy(b.v)}" r="${R}" fill="rgb(${b.col.map(Math.round).join(',')})" stroke="#000" stroke-width=".15"/>`);
+  if(advice.cue) s+=`<circle cx="${fx(advice.cue.u)}" cy="${fy(advice.cue.v)}" r="${R}" fill="#fff" stroke="#000" stroke-width=".15"/>`;
+  advice.top.slice().reverse().forEach((x,ri)=>{ const i=advice.top.length-1-ri, c=cols[i];
+    s+=`<line x1="${X(x.ob)}" y1="${Y(x.ob)}" x2="${X(x.pk)}" y2="${Y(x.pk)}" stroke="${c}" stroke-width="${i?.18:.28}"/>`;
+    s+=`<line x1="${fx(advice.cue.u)}" y1="${fy(advice.cue.v)}" x2="${X(x.gh)}" y2="${Y(x.gh)}" stroke="${c}" stroke-width="${i?.14:.22}" stroke-dasharray=".6 .4"/>`;
+    s+=`<circle cx="${X(x.gh)}" cy="${Y(x.gh)}" r="${R}" fill="none" stroke="${c}" stroke-width=".18" stroke-dasharray=".4 .3"/>`;
+    s+=`<text x="${X(x.ob)}" y="${Y(x.ob)}" dy="-2.4" font-size="1.8" font-weight="700" fill="${c}" text-anchor="middle">${i+1}</text>`; });
+  return s; }
+function drawAdviceOnCamera(){ if(!advice||!advice.top||!vid.videoWidth) return; const M=camH(1,1), k=ov.width/vid.videoWidth, w=W(), h=H();
+  const felt=p=>{ const [a,b]=linInvert(p[0]/w,p[1]/h), [x,y]=camMap(M,a,b); return [x*k,y*k]; };
+  const cols=['#39ff14','#ffd400','#00e5ff'];
+  advice.top.forEach((x,i)=>{ const seg=(a,b,dash,lw)=>{ ovx.setLineDash(dash||[]); [[lw+4,'rgba(0,0,0,.7)'],[lw,cols[i]]].forEach(([L,c])=>{ ovx.lineWidth=L; ovx.strokeStyle=c; ovx.beginPath(); const p=felt(a), q=felt(b); ovx.moveTo(p[0],p[1]); ovx.lineTo(q[0],q[1]); ovx.stroke(); }); ovx.setLineDash([]); };
+    seg(x.ob,x.pk,null,i?2:3.5); seg([advice.cue.u*w,advice.cue.v*h],x.gh,[6,5],i?2:3);
+    const [lx,ly]=felt([x.ob[0],x.ob[1]-3.5]); ovx.font='bold 18px system-ui'; ovx.lineWidth=4; ovx.strokeStyle='#000'; ovx.strokeText(String(i+1),lx,ly); ovx.fillStyle=cols[i]; ovx.fillText(String(i+1),lx,ly); }); }
+function runAdvice(){ const A=rectify(); if(!A){ toast('Start the camera and set its corners first'); return; } advice=shotOptions(A); showFeedback(adviceText(advice)); render(); drawOv(); }
+setInterval(()=>{ if(adviceOn && mode==='play' && camState==='on' && !capturing && (performance.now()-(stillSince||0))>800) runAdvice(); }, 1500);
 // ---------- keyboard ----------
 addEventListener('keydown', e=>{
   if(/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { if(e.key==='Escape') document.activeElement.blur(); return; }
@@ -1471,6 +1540,7 @@ addEventListener('keydown', e=>{
   // play
   if(k==='s'||k==='S'){ capture().then(det=>{ finishShotFeedback(null, det); scoreShot(det); }); return; }
   if(game){ if(gameKey(k)) e.preventDefault(); return; }
+  if(k==='o'||k==='O'){ adviceOn=!adviceOn; advice=null; showFeedback([]); if(adviceOn) runAdvice(); buildPanel(); render(); return; }
   if(k==='Enter' && !game){ e.preventDefault(); again(); return; }
   if(k==='a'||k==='A'){ result=null; arm(); toast('Auto-score armed'); return; }
   if(['ArrowRight','PageDown',' ','n','N','Enter'].includes(k)){ e.preventDefault(); go(st.idx+1); }
