@@ -1246,7 +1246,7 @@ function voiceCmd(t){ listenUntil=0;
   else if(/\bscore\b/.test(t)){ heardAt=performance.now(); toast('Heard: score'); capture().then(det=>{ finishShotFeedback(null, det); scoreShot(det); }); }
 }
 function again(){ result=null; if(game&&game.over){ startGame(game.type); return; } enterPlacing(); render(); speak('Set up the balls'); }
-window.__pt = { rectify:()=>rectify(), findBalls:(A,d)=>findBalls(A,d), detect:A=>detect(A), feltChroma:A=>feltChroma(A), shotOptions:A=>shotOptions(A) };
+window.__pt = { rectify:()=>rectify(), findBalls:(A,d)=>findBalls(A,d), detect:A=>detect(A), feltChroma:A=>feltChroma(A), shotOptions:A=>shotOptions(A), whiteDbg:A=>{ const o=shotOptions(A); return o.cue&&[o.cue.u*W(),o.cue.v*H(),o.cue.wf]; } };
 window.__poolDebug = { get track(){ return track; }, get lastShot(){ return lastShot; }, get state(){ return shotState; } };
 
 // ---------- shot recorder: saves the webcam clip + tracking data for each shot ----------
@@ -1489,8 +1489,14 @@ function findBalls(A, diag){
 function segBlocked(a,b,balls,skip,w,h){ const ax=a[0],ay=a[1],dx=b[0]-ax,dy=b[1]-ay,L=dx*dx+dy*dy||1;
   return balls.some(o=>{ if(skip.includes(o)) return false; const px=o.u*w, py=o.v*h; let t=((px-ax)*dx+(py-ay)*dy)/L; if(t<=0||t>=1) return false; return Math.hypot(px-ax-t*dx,py-ay-t*dy)<BALL_D*.98; }); }
 function shotOptions(A){
-  const w=W(), h=H(), cue=detect(A); if(!cue) return {err:'Couldn’t find the cue ball'};
-  const balls=findBalls(A).filter(b=>Math.hypot((b.u-cue.u)*w,(b.v-cue.v)*h)>BALL_D*.8);
+  const w=W(), h=H(), found=findBalls(A);
+  // cue ball = the ball whose whole circle is evenly white (a stripe has a coloured band)
+  const whiteFrac=b=>{ const [su,sv]=toSeen(b.u,b.v), cx=su*A.gw, cy=sv*A.gh, r=R*P*.8; let n=0,k=0;
+    for(let y=Math.floor(cy-r);y<=cy+r;y++) for(let x=Math.floor(cx-r);x<=cx+r;x++){ if(x<0||y<0||x>=A.gw||y>=A.gh||(x-cx)**2+(y-cy)**2>r*r) continue; n++;
+      const o=(y*A.gw+x)*3, a=A.px[o],g=A.px[o+1],bb=A.px[o+2], mn=Math.min(a,g,bb); if(mn>110 && Math.max(a,g,bb)-mn<70) k++; } return n?k/n:0; };
+  found.forEach(b=>b.wf=whiteFrac(b)); const best=found.slice().sort((a,b)=>b.wf-a.wf)[0];
+  const cue = best && best.wf>.45 ? best : detect(A); if(!cue) return {err:'Couldn’t find the cue ball'};
+  const balls=found.filter(b=>b!==cue && Math.hypot((b.u-cue.u)*w,(b.v-cue.v)*h)>BALL_D*.8);
   const all=balls.concat([cue]), cb=[cue.u*w,cue.v*h], opts=[];
   const pockets=[[0,0,'corner'],[.5,0,'side'],[1,0,'corner'],[0,1,'corner'],[.5,1,'side'],[1,1,'corner']];
   balls.forEach(o=>{ const ob=[o.u*w,o.v*h];
