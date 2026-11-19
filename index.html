@@ -353,7 +353,7 @@ function buildPanel(){
     <div class="row"><button class="${st.screenView?'on':''}" data-act="screenView">No projector – show the table on this screen</button>
       <button class="${emptyRef?'on':''}" data-act="emptyRef">${emptyRef?'Empty table captured':'Capture empty table'}</button>
       <button class="${st.sound!==false?'on':''}" data-act="sound">Sounds</button>
-      <button class="${st.speak!==false?'on':''}" data-act="speak">Speak feedback</button>
+      <button class="${st.speak===true?'on':''}" data-act="speak">Speak feedback</button>
       <button class="${st.voice?'on':''}" data-act="voice" title="Say: yes / again, next, back, score">Voice commands</button>
       <button class="${st.record?'on':''}" data-act="record" title="Save a webcam clip + tracking data for each shot to Downloads">Record shots</button>
       <span class="lbl">Fine-tune: cue ball is on the</span><button data-act="ft" data-v="head">Head spot</button><button data-act="ft" data-v="center">Center spot</button><button data-act="ft" data-v="foot">Foot spot</button><button data-act="ft" data-v="footL" title="In line with the 2nd diamond from the camera end on the LEFT long rail and the 1st diamond from the left on the camera-end rail">Foot-left</button><button data-act="ft" data-v="footR" title="Same, on the RIGHT side">Foot-right</button><button data-act="ft" data-v="headL" title="In line with the 2nd diamond from your end on the LEFT long rail and the 1st diamond from the left on your end rail">Head-left</button><button data-act="ft" data-v="headR" title="Same, on the RIGHT side">Head-right</button>
@@ -425,7 +425,7 @@ panel.addEventListener('click', e=>{
     case 'aids': st.aids = st.aids===false; break;
     case 'record': st.record=!st.record; if(!st.record) recEnd(false); else toast('Recording on — each shot is saved to Downloads (Chrome may ask to allow multiple downloads: click Allow)'); break;
     case 'voice': st.voice=!st.voice; if(st.voice){ voiceOn(); speak('Voice commands on. Say yes or again to reset the balls, or next for the next drill.'); } else voiceOff(); break;
-    case 'speak': st.speak = st.speak===false; if(st.speak) speak('Feedback on'); break;
+    case 'speak': st.speak = st.speak!==true; if(st.speak) speak('Feedback on'); break;
     case 'sound': st.sound = st.sound===false; if(st.sound) setTimeout(sndDing,50); break;
     case 'camSavePos': saveCamPos(); return;
     case 'camAuto2': setTimeout(()=>autoAdjust(false),30); toast('Finding the table…'); return;
@@ -1201,10 +1201,10 @@ function analyzeShot(){
   lines.push(`Speed ≈ ${mph.toFixed(1)} mph (${speedWord}) · cue ball rolled ${(travel/12).toFixed(1)} ft${rails?` · ${rails} rail${rails>1?'s':''}`:''}`);
   return {lines, cb:cb.slice(Math.max(0,i0-1)), obs:tr.obs.filter(o=>o.pts.length).map(o=>({n:o.n,pts:[o.start,...o.pts]}))};
 }
-function speak(text){ if(st.speak===false || !window.speechSynthesis) return; try{ speechSynthesis.cancel(); const u=new SpeechSynthesisUtterance(text); u.rate=1.05;
+function speak(text){ if(st.speak!==true || !window.speechSynthesis) return; try{ speechSynthesis.cancel(); const u=new SpeechSynthesisUtterance(text); u.rate=1.05;
   speaking=true; u.onend=u.onerror=()=>{ speaking=false; heardAt=performance.now(); if(/Again\?$/.test(text)) openListen(8000); }; speechSynthesis.speak(u); }catch(e){ speaking=false; } }
 function finishShotFeedback(){
-  const a=analyzeShot(); setTimeout(()=>recEnd(true, a?a.lines:['(no analysis)']), 1200); if(!a) return; lastShot=a; showFeedback(a.lines); if(st.voice && st.speak===false) openListen(10000);
+  const a=analyzeShot(); setTimeout(()=>recEnd(true, a?a.lines:['(no analysis)']), 1200); if(!a) return; lastShot=a; showFeedback(a.lines); if(st.voice && st.speak!==true) openListen(10000);
   speak(a.lines.filter(l=>!/^Speed/.test(l)).slice(0,2).join('. ').replace(/✓/g,'').replace(/→/g,',').replace(/"/g,' inches').replace(/°/g,' degrees') + (st.voice ? '. Again?' : ''));
 }
 function showFeedback(lines){ const el=$('fb'); if(!el) return; el.innerHTML = lines.map(l=>`<div>${esc(l)}</div>`).join(''); el.style.display = lines.length?'block':'none'; }
