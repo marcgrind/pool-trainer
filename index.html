@@ -748,7 +748,7 @@ function guideSVG(){
 function placeRing(it){ if(!placed) return ''; const ok=placed[it.u.toFixed(4)+','+it.v.toFixed(4)]; if(ok==null) return '';
   return `<circle cx="${fx(it.u)}" cy="${fy(it.v)}" r="${R+.9}" fill="none" stroke="${ok?'#00ff88':'#ff3b3b'}" stroke-width=".3" ${ok?'':'stroke-dasharray=".6 .5"'}/>`; }
 function placementSVG(){ return (camState==='on' && (shotState==='placing'||shotState==='armed')) ? placeItems().map(placeRing).join('')+guideSVG() : ''; }
-function arm(){ lastShot=null; showFeedback([]); recEnd(false); recBegin(); shotState='armed'; startTrack(); render(); setTimeout(()=>{ armedRef=rectify(); }, 400); }
+function arm(){ lastShot=null; showFeedback([]); recEnd(false); recBegin(); shotState='armed'; startTrack(); render(); setTimeout(()=>{ armedRef=rectify(); learnColors(); }, 400); }
 function enterPlacing(){ shotState='placing'; placed=null; armedRef=null; needCheck=true; }
 
 function scoreShot(det){
@@ -797,24 +797,28 @@ function tick(){
       render(); drawOv(); }
     return; }
   if(!st.cam.auto && shotState!=='placing') return;
-  // Shot finished = the cue ball has left its spot and then sat still ~1 s, even if you're still moving around the table.
-  if(track && track.cbStart && track.cb.length && (shotState==='armed'||shotState==='moving')){
-    const lp=track.cb[track.cb.length-1], left=Math.hypot((lp.u-track.cbStart.u)*W(),(lp.v-track.cbStart.v)*H())>3;
-    const obBusy=track.obs.some(o=>o.lastSeen && !o.made && now-o.lastSeen<700 && o.pts.length>1 && Math.hypot((o.pts[o.pts.length-1].u-o.pts[o.pts.length-2].u)*W(),(o.pts[o.pts.length-1].v-o.pts[o.pts.length-2].v)*H())>.5);
-    if(left && now-lp.t>1100 && !obBusy){ shotState='busy';
-      capture().then(det=>{ finishShotFeedback(); scoreShot(det); if(det) sndScore(result?result.pts||0:0); enterPlacing(); render(); }); return; } }
+  // Shot finished (no projector): the cue ball has left its start spot, then a cue ball is found in the same place on two looks ~0.6 s apart.
+  if(!useBlank() && track && track.cbStart && (shotState==='armed'||shotState==='moving') && now-(tick.sl||0)>300){
+    tick.sl=now; const A=rectify(); if(A){ const det=detect(A), away = det && Math.hypot((det.u-track.cbStart.u)*W(),(det.v-track.cbStart.v)*H())>3;
+      if(away){ if(!track.leftAt) track.leftAt=now;
+        if(track.prevDet && Math.hypot((det.u-track.prevDet.u)*W(),(det.v-track.prevDet.v)*H())<.6){
+          if(now-track.prevDet.t>=550){ finishWhenSettled(A, det); return; } }
+        else track.prevDet={u:det.u,v:det.v,t:now}; }
+      else { track.prevDet=null;
+        if(!det && spotWhite(A,track.cbStart.u,track.cbStart.v,st.cam.tol||6)<.12){ track.goneAt=track.goneAt||now; if(now-track.goneAt>8000){ shotState='busy'; finishShotFeedback(A, null); enterPlacing(); render(); return; } }
+        else track.goneAt=0; } } }
   if(motion > st.cam.mth){ stillSince=now; if(shotState==='armed'){ shotState='moving'; render(); } else if(shotState==='placing') needCheck=true; return; }
   if(shotState==='placing' && needCheck && now-stillSince>900){
     needCheck=false; shotState='busy';
     blankGrab().then(A=>{ shotState='placing'; if(!A) return; const ok=checkPlacement(A); updateGuide(A);
       drawOv(); if(ok){ sndDing(); arm(); } else { render(); if(!useBlank()) needCheck=true; } });
     return; }
-  if(shotState==='moving' && now-stillSince>900){
+  if(useBlank() && shotState==='moving' && now-stillSince>900){
     shotState='busy'; const w=watchSpot(), S1=rectify();
     if(w && armedRef && spotChange(armedRef,S1,w.u,w.v)<.3){ shotState='armed'; render(); return; }   // nothing left its spot: not a shot yet
     capture().then(det=>{
       if(w && w.cue && det && Math.hypot((det.u-w.u)*W(),(det.v-w.v)*H())<2.5){ shotState='armed'; armedRef=null; setTimeout(()=>{ armedRef=rectify(); },300); render(); return; }
-      finishShotFeedback(); scoreShot(det); if(det) sndScore(result?result.pts||0:0); enterPlacing(); render(); });
+      finishShotFeedback(null, det); scoreShot(det); if(det) sndScore(result?result.pts||0:0); enterPlacing(); render(); });
   }
 }
 
@@ -1203,8 +1207,8 @@ function analyzeShot(){
 }
 function speak(text){ if(st.speak!==true || !window.speechSynthesis) return; try{ speechSynthesis.cancel(); const u=new SpeechSynthesisUtterance(text); u.rate=1.05;
   speaking=true; u.onend=u.onerror=()=>{ speaking=false; heardAt=performance.now(); if(/Again\?$/.test(text)) openListen(8000); }; speechSynthesis.speak(u); }catch(e){ speaking=false; } }
-function finishShotFeedback(){
-  const a=analyzeShot(); setTimeout(()=>recEnd(true, a?a.lines:['(no analysis)']), 1200); if(!a) return; lastShot=a; showFeedback(a.lines); if(st.voice && st.speak!==true) openListen(10000);
+function finishShotFeedback(A, det){
+  if(!A) A=rectify(); const a = A&&track ? stillAnalysis(A, det||null) : analyzeShot(); setTimeout(()=>recEnd(true, a?a.lines:['(no analysis)']), 1200); if(!a) return; lastShot=a; showFeedback(a.lines); if(st.voice && st.speak!==true) openListen(10000);
   speak(a.lines.filter(l=>!/^Speed/.test(l)).slice(0,2).join('. ').replace(/✓/g,'').replace(/→/g,',').replace(/"/g,' inches').replace(/°/g,' degrees') + (st.voice ? '. Again?' : ''));
 }
 function showFeedback(lines){ const el=$('fb'); if(!el) return; el.innerHTML = lines.map(l=>`<div>${esc(l)}</div>`).join(''); el.style.display = lines.length?'block':'none'; }
@@ -1228,7 +1232,7 @@ function voiceCmd(t){ listenUntil=0;
   if(/\b(yes|yeah|yep|again|repeat|one more|reset|redo)\b/.test(t)){ heardAt=performance.now(); toast('Heard: again'); again(); }
   else if(/\b(next|skip)\b/.test(t)){ heardAt=performance.now(); toast('Heard: next'); if(game&&game.over) startGame(game.type); else if(!game) go(st.idx+1); speak('Set up the balls'); }
   else if(/\b(back|previous)\b/.test(t)){ heardAt=performance.now(); toast('Heard: back'); if(!game) go(st.idx-1); }
-  else if(/\bscore\b/.test(t)){ heardAt=performance.now(); toast('Heard: score'); capture().then(det=>{ finishShotFeedback(); scoreShot(det); }); }
+  else if(/\bscore\b/.test(t)){ heardAt=performance.now(); toast('Heard: score'); capture().then(det=>{ finishShotFeedback(null, det); scoreShot(det); }); }
 }
 function again(){ result=null; if(game&&game.over){ startGame(game.type); return; } enterPlacing(); render(); speak('Set up the balls'); }
 window.__poolDebug = { get track(){ return track; }, get lastShot(){ return lastShot; }, get state(){ return shotState; } };
@@ -1366,6 +1370,78 @@ function drawAidsOnCamera(items, spec){
     for(let i=0;i<5;i++){ ovx.globalAlpha=i<spec.speed?1:.25; ovx.fillRect(x0-r+i*14, y0+r+10, 11, 10); } ovx.globalAlpha=1;
     ovx.font='bold 12px system-ui'; ovx.textAlign='center'; ovx.fillText(`TIP · SPEED ${spec.speed}/5`, x0+6, y0+r+34); ovx.textAlign='left'; }
 }
+
+// ---------- before/after shot analysis (robust: doesn't need to follow fast, blurred balls) ----------
+// Object balls are recognised by their own colour, learned from the set-up frame.
+function chromaAt(A,u,v){ const [su,sv]=toSeen(u,v), cx=su*A.gw, cy=sv*A.gh, r=R*P*.6; const cr=[],cg=[],ss=[];
+  for(let y=Math.floor(cy-r);y<=cy+r;y++) for(let x=Math.floor(cx-r);x<=cx+r;x++){ if(x<0||y<0||x>=A.gw||y>=A.gh||(x-cx)**2+(y-cy)**2>r*r) continue;
+    const o=(y*A.gw+x)*3, t=A.px[o]+A.px[o+1]+A.px[o+2]+1; cr.push(A.px[o]/t); cg.push(A.px[o+1]/t); ss.push(t); }
+  const med=a=>a.sort((p,q)=>p-q)[a.length>>1]; return cr.length?[med(cr),med(cg),med(ss)]:null; }
+function colMatch(A,o,col){ const r=A.px[o],g=A.px[o+1],b=A.px[o+2],t=r+g+b+1; return Math.hypot(r/t-col[0],g/t-col[1])<.045 && t>col[2]*.55 && t<col[2]*1.8; }
+function colFracAt(A,u,v,col){ const [su,sv]=toSeen(u,v), cx=su*A.gw, cy=sv*A.gh, r=R*P*.7; let n=0,m=0;
+  for(let y=Math.floor(cy-r);y<=cy+r;y++) for(let x=Math.floor(cx-r);x<=cx+r;x++){ if(x<0||y<0||x>=A.gw||y>=A.gh||(x-cx)**2+(y-cy)**2>r*r) continue; n++; if(colMatch(A,(y*A.gw+x)*3,col)) m++; }
+  return n?m/n:0; }
+function findColBall(A,col){ const N=A.gw*A.gh, mask=new Uint8Array(N); for(let k=0;k<N;k++) if(colMatch(A,k*3,col)) mask[k]=1;
+  const lab=new Uint8Array(N), q=new Int32Array(N), target=Math.PI*(R*P)**2; let best=null;
+  for(let s0=0;s0<N;s0++){ if(!mask[s0]||lab[s0]) continue; let h=0,t=0,n=0,sx=0,sy=0,x0=1e9,x1=-1,y0=1e9,y1=-1; q[t++]=s0; lab[s0]=1;
+    while(h<t){ const p=q[h++], px=p%A.gw, py=(p/A.gw)|0; n++; sx+=px; sy+=py; if(px<x0)x0=px; if(px>x1)x1=px; if(py<y0)y0=py; if(py>y1)y1=py;
+      for(const nb of [p-1,p+1,p-A.gw,p+A.gw]){ if(nb<0||nb>=N||(nb===p-1&&px===0)||(nb===p+1&&px===A.gw-1)) continue; if(mask[nb]&&!lab[nb]){ lab[nb]=1; q[t++]=nb; } } }
+    const ratio=n/target, bw=x1-x0+1, bh=y1-y0+1, asp=bw/bh, fill=n/(bw*bh);
+    if(ratio<.25||ratio>3||asp<.45||asp>2.2||fill<.35||Math.max(bw,bh)>R*P*4.4) continue;   // ball-shaped only (not the cue shaft, an arm, etc.)
+    const sc=Math.abs(Math.log(ratio));
+    if(!best||sc<best.sc){ const [u,v]=toTrue((sx/n+.5)/A.gw,(sy/n+.5)/A.gh); best={sc,u,v}; } }
+  return best; }
+function feltChroma(A){ const cr=[],cg=[],tt=[]; for(let k=0;k<A.gw*A.gh;k+=7){ const o=k*3, t=A.px[o]+A.px[o+1]+A.px[o+2]+1; if(t<60) continue; cr.push(A.px[o]/t); cg.push(A.px[o+1]/t); tt.push(t); }
+  const med=a=>a.sort((p,q)=>p-q)[a.length>>1]; return [med(cr),med(cg),med(tt)]; }
+function learnColors(){ const A=rectify(); if(!A||!track) return; const F=feltChroma(A); track.felt=F;
+  track.obs.forEach(o=>{ const [su,sv]=toSeen(o.start.u,o.start.v), cx=su*A.gw, cy=sv*A.gh, r=R*P*2.2; const cr=[],cg=[],ss=[];
+    for(let y=Math.floor(cy-r);y<=cy+r;y++) for(let x=Math.floor(cx-r);x<=cx+r;x++){ if(x<0||y<0||x>=A.gw||y>=A.gh||(x-cx)**2+(y-cy)**2>r*r) continue;
+      const q=(y*A.gw+x)*3, R_=A.px[q],G=A.px[q+1],B=A.px[q+2], t=R_+G+B+1, mn=Math.min(R_,G,B), mx_=Math.max(R_,G,B);
+      if(Math.hypot(R_/t-F[0],G/t-F[1])<.07) continue;          // felt
+      if(mn>=st.cam.white-30 && mx_-mn<=st.cam.sat+15) continue;   // cue-ball white / highlights
+      if(t<F[2]*1.3) continue;                                    // felt in shadow / darker spots (balls are brighter than the felt)
+      cr.push(R_/t); cg.push(G/t); ss.push(t); }
+    if(cr.length>=8){ const med=a=>a.sort((p,q)=>p-q)[a.length>>1]; o.col2=[med(cr),med(cg),med(ss)]; } });
+  track.setupA=A; }
+// After the cue ball settles, wait until the object ball's state agrees on two looks ~0.5 s apart (it may still be rolling into the pocket).
+function obKey(A){ return (track?track.obs:[]).map(o=>{ if(!o.col2) return 'x'; const f=findColBall(A,o.col2); return f?`${f.u.toFixed(3)},${f.v.toFixed(3)}`:'gone'; }); }
+function sameKeys(a,b){ return a.length===b.length && a.every((k,i)=>{ if(k===b[i]) return true; if(k.indexOf(',')<0||b[i].indexOf(',')<0) return false;
+  const p=k.split(',').map(Number), q=b[i].split(',').map(Number); return Math.hypot((p[0]-q[0])*W(),(p[1]-q[1])*H())<.6; }); }
+function finishWhenSettled(A, det){
+  shotState='busy'; const t0=performance.now(); let prev=obKey(A);
+  const step=()=>{ const B=rectify()||A, k=obKey(B);
+    if(sameKeys(k,prev) || performance.now()-t0>3500){ const d2=detect(B)||det; finishShotFeedback(B, d2); scoreShot(d2); sndScore(result?result.pts||0:0); enterPlacing(); render(); return; }
+    prev=k; setTimeout(step,500); };
+  setTimeout(step,500);
+}
+function stillAnalysis(A, det){
+  const lines=[], w=W(), h=H(), items=game?game.items:drill().items, dist=(a,b)=>Math.hypot((a.u-b.u)*w,(a.v-b.v)*h);
+  const start=track&&track.cbStart; let made=null, obInfo=null;
+  (track?track.obs:[]).forEach(o=>{ if(!o.col2) return;
+    const f=findColBall(A,o.col2);
+    if(f && Math.hypot((f.u-o.start.u)*w,(f.v-o.start.v)*h)<2.5){ obInfo={o,state:'still'}; return; }
+    const isolated = f && (!track.setupA || ringChange(track.setupA, A, f.u, f.v) < .35);   // a real ball sits on clear felt; an arm or leg doesn't
+    obInfo = isolated ? {o,state:'moved',at:f} : {o,state:'made'}; });
+  if(obInfo){
+    if(obInfo.state==='made'){ made=true; lines.push('Object ball: made ✓'); }
+    else if(obInfo.state==='still'){ made=false; lines.push('Object ball didn’t move — missed it'); }
+    else { made=false; const pk=POCKETS.reduce((a,p)=>Math.hypot((p[0]-obInfo.at.u)*w,(p[1]-obInfo.at.v)*h)<Math.hypot((a[0]-obInfo.at.u)*w,(a[1]-obInfo.at.v)*h)?p:a);
+      lines.push(`Object ball: not made (stopped ${Math.hypot((pk[0]-obInfo.at.u)*w,(pk[1]-obInfo.at.v)*h).toFixed(0)}" from the nearest pocket)`); }
+  } else if(track&&track.obs.length) lines.push('Object ball: couldn’t judge (not seen at set-up)');
+  if(det && start){
+    const sh=shotAids(items).shots[0];
+    if(sh && sh.cut!=null && sh.cut<10){   // near straight-in: say what the cue ball did after contact
+      const d=[(sh.ob[0]-sh.cb[0]),(sh.ob[1]-sh.cb[1])], L=Math.hypot(d[0],d[1])||1, along=((det.u*w-sh.ghost[0])*d[0]+(det.v*h-sh.ghost[1])*d[1])/L;
+      const side=Math.abs(((det.u*w-sh.ghost[0])*d[1]-(det.v*h-sh.ghost[1])*d[0])/L);
+      if(Math.abs(along)<1.5 && side<2) lines.push('Cue ball stopped ✓');
+      else if(along>0) lines.push(`Cue ball rolled forward ${along.toFixed(1)}" past the contact point${side>2?` and ${side.toFixed(1)}" off line`:''} → hit a little lower`);
+      else lines.push(`Cue ball drew back ${(-along).toFixed(1)}"${side>2?` and ${side.toFixed(1)}" off line`:''} → hit a little higher / softer`);
+    }
+    const tg = game&&game.target ? game.target : items.filter(it=>it.t==='target').sort((a,b)=>dist(a,det)-dist(b,det))[0];
+    if(tg){ const dd=Math.hypot((tg.u-det.u)*w,(tg.v-det.v)*h); lines.push(dd<=tg.r ? `Finished inside the target ✓ (${dd.toFixed(1)}" from center)` : `Finished ${dd.toFixed(1)}" from the target center`); }
+  } else if(!det) lines.push('Couldn’t find the cue ball after the shot (scratch?)');
+  return {lines, cb:[], obs:[], made};
+}
 // ---------- keyboard ----------
 addEventListener('keydown', e=>{
   if(/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { if(e.key==='Escape') document.activeElement.blur(); return; }
@@ -1393,7 +1469,7 @@ addEventListener('keydown', e=>{
   }
   if(mode==='cam'){ if(k==='Escape') setMode('play'); return; }
   // play
-  if(k==='s'||k==='S'){ capture().then(det=>{ finishShotFeedback(); scoreShot(det); }); return; }
+  if(k==='s'||k==='S'){ capture().then(det=>{ finishShotFeedback(null, det); scoreShot(det); }); return; }
   if(game){ if(gameKey(k)) e.preventDefault(); return; }
   if(k==='Enter' && !game){ e.preventDefault(); again(); return; }
   if(k==='a'||k==='A'){ result=null; arm(); toast('Auto-score armed'); return; }
