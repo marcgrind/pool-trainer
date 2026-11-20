@@ -1624,7 +1624,7 @@ function findBalls(A, diag, opt){ opt=opt||{};
 // ---------- balls sitting in the pocket jaws ----------
 // Over the dark pocket a ball doesn't stand out from "the felt around it", so each pocket is compared with a picture
 // of the same pocket taken empty (saved by "Capture empty table"). Anything ball-sized and round that wasn't there is a ball.
-const PK_HALF=6;   // inches either side of the pocket centre
+const PK_HALF=5;   // changing this needs new empty-pocket photos   // inches either side of the pocket centre
 const pocketBox = (pu,pv) => [pu-PK_HALF/W(), pu+PK_HALF/W(), pv-PK_HALF/H(), pv+PK_HALF/H()];
 // The pictures are tied to the camera's pixels, not to the corner fit: auto-adjust may nudge the corners a little each
 // time the camera starts, so we always re-sample with the corners that were in use when the pictures were taken.
