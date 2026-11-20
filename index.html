@@ -1510,14 +1510,18 @@ function findBalls(A, diag){
 // of the same pocket taken empty (saved by "Capture empty table"). Anything ball-sized and round that wasn't there is a ball.
 const PK_HALF=5;   // inches either side of the pocket centre
 const pocketBox = (pu,pv) => [pu-PK_HALF/W(), pu+PK_HALF/W(), pv-PK_HALF/H(), pv+PK_HALF/H()];
-function savePocketRefs(){ let full=null; const refs=POCKETS.map(([pu,pv])=>{ const Pt=rectPatch(...pocketBox(pu,pv),full); if(!Pt) return null; full=Pt.img; return {gw:Pt.gw,gh:Pt.gh,px:b64(Pt.px)}; });
-  if(refs.every(Boolean)){ st.cam.pocketRef=refs; st.cam.pocketRefKey=JSON.stringify(st.cam.pts); save(); } }
+// The pictures are tied to the camera's pixels, not to the corner fit: auto-adjust may nudge the corners a little each
+// time the camera starts, so we always re-sample with the corners that were in use when the pictures were taken.
+function withPts(pts, fn){ const keep=st.cam.pts; st.cam.pts=pts; tkGeo=null; try{ return fn(); } finally { st.cam.pts=keep; tkGeo=null; } }
+function savePocketRefs(){ let full=null; st.cam.pocketPts=JSON.parse(JSON.stringify(st.cam.pts)); const refs=POCKETS.map(([pu,pv])=>{ const Pt=rectPatch(...pocketBox(pu,pv),full); if(!Pt) return null; full=Pt.img; return {gw:Pt.gw,gh:Pt.gh,px:b64(Pt.px)}; });
+  if(refs.every(Boolean)){ st.cam.pocketRef=refs; save(); } }
 var pkCache=null;
 function jawBalls(found, diag){
   const refs=st.cam.pocketRef; if(!refs || !vid.videoWidth) return [];
   if(!pkCache || pkCache.refs!==refs) pkCache={refs, px:refs.map(r=>unb64(r.px))};
   const out=[], target=Math.PI*(R*P)**2; let full=null;
-  POCKETS.forEach(([pu,pv],i)=>{ const Pt=rectPatch(...pocketBox(pu,pv),full); if(!Pt) return; full=Pt.img; const ref=pkCache.px[i], gw=Pt.gw, gh=Pt.gh;
+  const refPts=st.cam.pocketPts||st.cam.pts;
+  POCKETS.forEach(([pu,pv],i)=>{ const Pt=withPts(refPts,()=>rectPatch(...pocketBox(pu,pv),full)); if(!Pt) return; full=Pt.img; const ref=pkCache.px[i], gw=Pt.gw, gh=Pt.gh;
     if(refs[i].gw!==gw || refs[i].gh!==gh) return;
     const mask=new Uint8Array(gw*gh);
     for(let y=1;y<gh-1;y++) for(let x=1;x<gw-1;x++){ const o=(y*gw+x)*3; let best=1e9;   // allow a 1 px shift (camera auto-adjust)
@@ -1528,7 +1532,8 @@ function jawBalls(found, diag){
       while(h<t){ const p=q[h++], px=p%gw, py=(p/gw)|0; n++; sx+=px; sy+=py; cr+=Pt.px[p*3]; cg+=Pt.px[p*3+1]; cb+=Pt.px[p*3+2]; rr+=ref[p*3]; rg+=ref[p*3+1]; rb+=ref[p*3+2]; if(px<x0)x0=px; if(px>x1)x1=px; if(py<y0)y0=py; if(py>y1)y1=py;
         for(const nb of [p-1,p+1,p-gw,p+gw]){ if(nb<0||nb>=gw*gh||(nb===p-1&&px===0)||(nb===p+1&&px===gw-1)) continue; if(mask[nb]&&!lab[nb]){ lab[nb]=1; q[t++]=nb; } } }
       const bw=x1-x0+1, bh=y1-y0+1, ratio=n/target, asp=bw/bh, fill=n/(bw*bh), touches=x0===1||y0===1||x1===gw-2||y1===gh-2;
-      const [u,v]=toTrue(Pt.u0+(sx/n+.5)/(W()*P), Pt.v0+(sy/n+.5)/(H()*P));
+      const [cx_,cy_]=withPts(refPts,()=>camMap(camH(1,1), Pt.u0+(sx/n+.5)/(W()*P), Pt.v0+(sy/n+.5)/(H()*P)));
+      const [u,v]=camToTable(cx_/vid.videoWidth, cy_/vid.videoHeight);
       const info={jaw:i,u:+(u*W()).toFixed(1),v:+(v*H()).toFixed(1),n,ratio:+ratio.toFixed(2),asp:+asp.toFixed(2),fill:+fill.toFixed(2),col:[cr/n,cg/n,cb/n].map(Math.round)};
       if(n>=8 && diag) diag.push(info);
       if(ratio<.3||ratio>1.8||asp<.45||asp>2.2||fill<.4||touches){ info.why='jaw shape'; continue; }
