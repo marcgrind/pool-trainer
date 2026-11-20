@@ -1833,7 +1833,7 @@ function coachAfterShot(e){
 // It can't read numbers, so anything it gets wrong is one tap to fix (switch turn, undo, swap groups).
 var bar=null;
 function ballKind(A,b){ const L=ballLook(A,b), c=b.col, s=c[0]+c[1]+c[2], mx=Math.max(...c), mn=Math.min(...c);
-  if(L.wf>=.75) return 'cue'; if(s<170 && mx-mn<45) return 'eight'; return L.wf>=.1 ? 'stripe' : 'solid'; }
+  if(L.wf>=.75) return 'cue'; return L.wf>=.1 ? 'stripe' : 'solid'; }
 function barCensus(A){ const found=stableBalls(A), cue=pickCue(A,found), w=W(), h=H();
   const balls=found.filter(b=>!cue || Math.hypot((b.u-cue.u)*w,(b.v-cue.v)*h)>BALL_D*.8).map(b=>({u:b.u,v:b.v,kind:ballKind(A,b)}));
   const n={solid:0,stripe:0,eight:0}; balls.forEach(b=>n[b.kind]++); return {cue, balls, n}; }
@@ -1848,6 +1848,7 @@ function barDraw(){ if(!bar) return; const el=$('bar'), n=barLeft();
   el.innerHTML=`${[0,1].map(i=>`<div class="pl ${bar.turn===i&&!bar.over?'up':''}">${bar.turn===i&&!bar.over?'▶':'&nbsp;&nbsp;'}<input data-pl="${i}" value="${esc(bar.names[i])}"><span class="grp">${grp(i)}</span></div>`).join('')}
     <div class="msg">${esc(bar.msg)}</div>
     <div class="btns"><button data-bar="switch">Switch turn</button><button data-bar="foul">Foul → ball in hand</button><button data-bar="swap">Swap groups</button><button data-bar="undo">Undo last shot</button><button data-bar="new">New rack</button></div>
+    <div class="btns">${bar.over!=null?'':`<button data-bar="eight">The 8 went down</button>`}</div>
     <div class="tip" style="margin-top:6px">Step back after each shot — it scores when the balls stop.</div>`;
   el.style.display='block';
   el.querySelectorAll('input').forEach(inp=>inp.onchange=()=>{ bar.names[+inp.dataset.pl]=inp.value||`Player ${+inp.dataset.pl+1}`; st.barNames=bar.names.slice(); save(); barDraw(); });
@@ -1859,6 +1860,9 @@ function barAct(a){ if(!bar) return; const other=1-bar.turn;
     if(a==='switch'){ bar.turn=other; bar.msg=`${bar.names[bar.turn]}'s turn`; }
     if(a==='foul'){ bar.turn=other; bar.msg=`Foul — ${bar.names[bar.turn]} has ball in hand`; }
     if(a==='swap' && bar.groups){ bar.groups=[bar.groups[1],bar.groups[0]]; bar.msg=`${bar.names[0]}: ${bar.groups[0]}s · ${bar.names[1]}: ${bar.groups[1]}s`; }
+    if(a==='eight'){ const me=bar.turn, mine=bar.groups&&bar.groups[me], n=barLeft(), cleared=mine && n[mine]===0;
+      if(cleared){ bar.over=me; bar.msg=`${bar.names[me]} made the 8 — ${bar.names[me]} wins!`; } else { bar.over=1-me; bar.msg=`8 down early — ${bar.names[1-me]} wins`; }
+      bar.msg+=' (tap Undo if that’s wrong)'; }
     if(a==='new'){ const names=bar.names, loser=bar.over!=null?1-bar.over:bar.turn; barStart(); bar.names=names; bar.turn=loser; bar.msg=`Rack 'em — ${names[loser]} to break`; } }
   barSnap(); barDraw(); }
 // one shot finished: before = census at the start, after = census now
