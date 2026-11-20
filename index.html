@@ -1468,7 +1468,7 @@ function refreshSetup(A, det){
   const fb=findBalls(A).filter(b=>dist(b,det)>BALL_D*.8), refs=track.obs.map(o=>fb.filter(b=>dist(b,o.start)<(track.obs.length===1?6:2.5)).sort((a,b)=>dist(a,o.start)-dist(b,o.start))[0]);
   if(refs.some(r=>!r)) return;
   track.obs.forEach((o,i)=>{ o.ref={u:refs[i].u,v:refs[i].v,col:refs[i].col}; }); track.setupBalls=fb.map(b=>({u:b.u,v:b.v})); track.setupA=A; learnColors(A); }
-function colClose(a,b){ const ta=a[0]+a[1]+a[2]+1, tb=b[0]+b[1]+b[2]+1; return Math.hypot(a[0]/ta-b[0]/tb, a[1]/ta-b[1]/tb)<.07 && ta/tb>.6 && ta/tb<1.65; }
+function colClose(a,b){ const ta=a[0]+a[1]+a[2]+1, tb=b[0]+b[1]+b[2]+1; return Math.hypot(a[0]/ta-b[0]/tb, a[1]/ta-b[1]/tb)<.12 && ta/tb>.5 && ta/tb<2; }   // loose enough for light changing across the table, tight enough to reject skin
 // Where is each object ball now? 'still' (on its spot), 'moved' (on the table elsewhere) or 'made' (not on the table).
 // Only real balls count: round, ball-sized, sitting on clear felt (the finder's checks), not touching the edge where you lean in.
 function obStates(A, det){
