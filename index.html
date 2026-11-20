@@ -28,6 +28,14 @@ kbd{background:#2a2a30;border:1px solid #444;border-radius:4px;padding:0 4px;fon
 #modal{position:fixed;inset:0;background:rgba(0,0,0,.75);display:none;align-items:center;justify-content:center;z-index:20}
 #modal .box{background:#1b1b20;border:1px solid #444;border-radius:10px;padding:14px;width:min(720px,92vw)}
 #modal textarea{width:100%;height:320px;background:#111;color:#ddd;border:1px solid #444;border-radius:6px;font:12px ui-monospace,Menlo,monospace;box-sizing:border-box;padding:8px}
+#bar{position:fixed;left:12px;top:12px;z-index:10;background:rgba(18,18,22,.96);border:1px solid #333;border-radius:12px;padding:12px 14px;font-size:18px;min-width:340px;max-width:44vw;display:none}
+#bar .pl{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;margin:3px 0}
+#bar .pl.up{background:#1d4d2f;outline:2px solid #3ddc84}
+#bar .pl input{background:transparent;border:0;color:#fff;font:inherit;font-weight:700;width:110px}
+#bar .grp{color:#bbb;font-size:15px;flex:1}
+#bar .msg{margin:8px 0 6px;font-size:20px;font-weight:700}
+#bar .btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+#bar .btns button{font-size:13px;padding:5px 8px}
 #fb{position:fixed;right:12px;bottom:12px;max-width:min(560px,45vw);background:rgba(18,18,22,.94);border:1px solid #333;border-left:4px solid #ffd400;border-radius:10px;padding:10px 14px;font-size:17px;line-height:1.5;z-index:9;display:none}
 table.pt{border-collapse:collapse;width:100%;margin:8px 0}table.pt td,table.pt th{border-bottom:1px solid #333;padding:5px 8px;text-align:left}table.pt th{color:#999;font-weight:600}
 #blk{position:fixed;inset:0;background:#000;display:none;z-index:15}
@@ -59,7 +67,7 @@ input[type=range]{padding:0;width:90px}
 </div>
 <div id="panel"></div>
 <div id="toast"></div>
-<div id="fb"></div>
+<div id="fb"></div><div id="bar"></div>
 <div id="prog" style="position:fixed;inset:0;background:rgba(0,0,0,.75);display:none;align-items:center;justify-content:center;z-index:21" onclick="if(event.target===this)this.style.display='none'"><div class="box" style="background:#1b1b20;border:1px solid #444;border-radius:10px;padding:16px;width:min(640px,92vw)"><div class="row" style="justify-content:space-between"><b>Your progress</b><button onclick="document.getElementById('prog').style.display='none'">Close</button></div><div id="progBody"></div></div></div>
 <div id="modal"><div class="box">
   <div class="row" style="justify-content:space-between"><b>Drills &amp; setup (JSON)</b><button data-act="closeModal">Close</button></div>
@@ -376,7 +384,7 @@ function buildPanel(){
   if (mode==='play'){
     h+=`<div class="row"><span class="lbl">Games</span>${Object.entries(GAMES).map(([k,g])=>`<button class="${game&&game.type===k?'on':''}" data-act="game" data-v="${k}">${g.title}</button>`).join('')}${game?'<button data-act="quitGame">Quit game</button>':''}</div>`;
     if (game) h+=`<div class="tip">${GAMES[game.type].help}</div>`;
-    h+=`<div class="row"><button class="${st.voice?'on':''}" data-act="voice">Voice commands</button><button class="${st.record?'on':''}" data-act="record">Record shots</button><button class="${st.aids!==false?'on':''}" data-act="aids">Shot guides</button><button class="${adviceOn&&!runout?'on':''}" data-act="advice" title="Find all balls and suggest the best shots (O)">Shot options</button><button class="${runout?'on':''}" data-act="runout" title="Plan each shot and where the cue ball should land for the next one">Run-out practice</button><button class="${coach.on?'on':''}" data-act="coach" title="Picks drills for your weakest skills and levels you up">Coach</button><button data-act="progress">Progress</button><span class="tip">After a shot say "yes" or "again" (or press <kbd>Enter</kbd>) to set it up again · "next" · "back" · "score"</span></div>`;
+    h+=`<div class="row"><button class="${st.voice?'on':''}" data-act="voice">Voice commands</button><button class="${st.record?'on':''}" data-act="record">Record shots</button><button class="${st.aids!==false?'on':''}" data-act="aids">Shot guides</button><button class="${adviceOn&&!runout?'on':''}" data-act="advice" title="Find all balls and suggest the best shots (O)">Shot options</button><button class="${runout?'on':''}" data-act="runout" title="Plan each shot and where the cue ball should land for the next one">Run-out practice</button><button class="${bar?'on':''}" data-act="bar" title="Two players, regular 15-ball 8-ball: keeps turns, groups and the winner">Bar pool (2 players)</button><button class="${coach.on?'on':''}" data-act="coach" title="Picks drills for your weakest skills and levels you up">Coach</button><button data-act="progress">Progress</button><span class="tip">After a shot say "yes" or "again" (or press <kbd>Enter</kbd>) to set it up again · "next" · "back" · "score"</span></div>`;
     if (!game) h+=`<div class="tip"><kbd>S</kbd> score now · <kbd>A</kbd> re-arm auto-score · <kbd>→</kbd>/<kbd>PgDn</kbd>/<kbd>Space</kbd> next · <kbd>←</kbd>/<kbd>PgUp</kbd> prev (any presentation clicker works) · <kbd>F</kbd> flip ↔ · <kbd>V</kbd> flip ↕ · <kbd>R</kbd> random rack · <kbd>B</kbd> blackout · <kbd>H</kbd> hide this panel · <kbd>E</kbd> edit · <kbd>C</kbd> calibrate</div>`;
   }
   panel.innerHTML=h;
@@ -430,9 +438,10 @@ panel.addEventListener('click', e=>{
     case 'camTest': capture().then(det=>{ result = det ? {u:det.u,v:det.v,label:'Detected'} : null; if(!det) toast('Cue ball not found — adjust White ≥ / Max tint'); render(); }); return;
     case 'screenView': st.screenView=!st.screenView; break;
     case 'emptyRef': captureEmpty(); return;
-    case 'advice': adviceOn=!adviceOn; runout=null; advice=null; showFeedback([]); if(adviceOn) runAdvice(); break;
-    case 'runout': if(runout){ runout=null; adviceOn=false; advice=null; showFeedback([]); } else { coach.on=false; adviceOn=true; runout={n:0,ok:0}; runoutPlan(); } break;
-    case 'coach': coach.on=!coach.on; if(coach.on){ adviceOn=false; runout=null; advice=null; coachPick(); } else { coach.d=null; showFeedback([]); } break;
+    case 'advice': if(bar) barStop(); adviceOn=!adviceOn; runout=null; advice=null; showFeedback([]); if(adviceOn) runAdvice(); break;
+    case 'runout': if(bar) barStop(); if(runout){ runout=null; adviceOn=false; advice=null; showFeedback([]); } else { coach.on=false; adviceOn=true; runout={n:0,ok:0}; runoutPlan(); } break;
+    case 'bar': if(bar){ barStop(); } else { coach.on=false; adviceOn=false; runout=null; advice=null; showFeedback([]); barStart(); } break;
+    case 'coach': coach.on=!coach.on; if(coach.on){ adviceOn=false; runout=null; if(bar) barStop(); advice=null; coachPick(); } else { coach.d=null; showFeedback([]); } break;
     case 'progress': showProgress(); return;
     case 'aids': st.aids = st.aids===false; break;
     case 'record': st.record=!st.record; if(!st.record) recEnd(false); else toast('Recording on — each shot is saved to Downloads (Chrome may ask to allow multiple downloads: click Allow)'); break;
@@ -1267,7 +1276,7 @@ function voiceCmd(t){ listenUntil=0;
   else if(/\bscore\b/.test(t)){ heardAt=performance.now(); toast('Heard: score'); capture().then(det=>{ finishShotFeedback(null, det); scoreShot(det); }); }
 }
 function again(){ result=null; if(game&&game.over){ startGame(game.type); return; } enterPlacing(); render(); speak('Set up the balls'); }
-window.__pt = { get runout(){ return runout; },  feltModel:A=>feltModel(A),  replayJudge:c=>replayJudge(c),  replaySetup:c=>replaySetup(c),  findBallsOpt:(A,d,o)=>findBalls(A,d,o),  clipList:()=>clipList(), rejudge:(c,o)=>rejudge(c,o), obStates:(A,d)=>obStates(A,d), refreshSetup:(A,d)=>refreshSetup(A,d), getTrack:()=>track, setTrack:t=>{track=t;},  savePocketRefs:()=>savePocketRefs(), jawBalls:(f,d)=>jawBalls(f,d), rectPatch:(a,b,c,d)=>rectPatch(a,b,c,d), POCKETS:()=>POCKETS, W:()=>W(), H:()=>H(), toSeen:(u,v)=>toSeen(u,v), ballLook:(A,b)=>ballLook(A,b), pickCue:(A,f)=>pickCue(A,f), get cueMark(){ return cueMark; }, setCueMark:(u,v)=>setCueMark(u,v), camToTable:(x,y)=>camToTable(x,y), rectify:s=>rectify(s), findBalls:(A,d)=>findBalls(A,d), detect:A=>detect(A), feltChroma:A=>feltChroma(A), shotOptions:A=>shotOptions(A), whiteDbg:A=>{ const o=shotOptions(A); return {cue:o.cue&&[o.cue.u*W(),o.cue.v*H(),o.cue.wf], balls:(o.balls||[]).map(b=>[+(b.u*W()).toFixed(1),+(b.v*H()).toFixed(1),+(b.wf||0).toFixed(2),b.name])}; } };
+window.__pt = { get bar(){ return bar; }, barCensus:A=>barCensus(A), ballKind:(A,b)=>ballKind(A,b),  get runout(){ return runout; },  feltModel:A=>feltModel(A),  replayJudge:c=>replayJudge(c),  replaySetup:c=>replaySetup(c),  findBallsOpt:(A,d,o)=>findBalls(A,d,o),  clipList:()=>clipList(), rejudge:(c,o)=>rejudge(c,o), obStates:(A,d)=>obStates(A,d), refreshSetup:(A,d)=>refreshSetup(A,d), getTrack:()=>track, setTrack:t=>{track=t;},  savePocketRefs:()=>savePocketRefs(), jawBalls:(f,d)=>jawBalls(f,d), rectPatch:(a,b,c,d)=>rectPatch(a,b,c,d), POCKETS:()=>POCKETS, W:()=>W(), H:()=>H(), toSeen:(u,v)=>toSeen(u,v), ballLook:(A,b)=>ballLook(A,b), pickCue:(A,f)=>pickCue(A,f), get cueMark(){ return cueMark; }, setCueMark:(u,v)=>setCueMark(u,v), camToTable:(x,y)=>camToTable(x,y), rectify:s=>rectify(s), findBalls:(A,d)=>findBalls(A,d), detect:A=>detect(A), feltChroma:A=>feltChroma(A), shotOptions:A=>shotOptions(A), whiteDbg:A=>{ const o=shotOptions(A); return {cue:o.cue&&[o.cue.u*W(),o.cue.v*H(),o.cue.wf], balls:(o.balls||[]).map(b=>[+(b.u*W()).toFixed(1),+(b.v*H()).toFixed(1),+(b.wf||0).toFixed(2),b.name])}; } };
 window.__poolDebug = { get track(){ return track; }, get lastShot(){ return lastShot; }, get state(){ return shotState; } };
 
 // ---------- shot recorder: saves the webcam clip + tracking data for each shot ----------
@@ -1705,7 +1714,7 @@ function stableBalls(A){ const w=W(), h=H(), now=findBalls(A), last=ballHist[bal
   const groups=[]; ballHist.forEach((H_,fi)=>H_.b.forEach(b=>{ const g=groups.find(g=>Math.hypot((g.u-b.u)*w,(g.v-b.v)*h)<1.3 && !g.frames.has(fi));
     if(g){ g.list.push(b); g.frames.add(fi); g.u=g.list.reduce((a,x)=>a+x.u,0)/g.list.length; g.v=g.list.reduce((a,x)=>a+x.v,0)/g.list.length; } else groups.push({u:b.u,v:b.v,list:[b],frames:new Set([fi])}); }));
   return groups.filter(g=>g.frames.size>=Math.ceil(ballHist.length/2)).map(g=>{ const r=g.list[g.list.length-1]; return {...r, u:g.u, v:g.v}; }); }
-setInterval(()=>{ if(mode==='play' && camState==='on' && adviceOn && !capturing){ const A=rectify(); if(A) stableBalls(A); } }, 350);
+setInterval(()=>{ if(mode==='play' && camState==='on' && (adviceOn||bar) && !capturing){ const A=rectify(); if(A) stableBalls(A); } }, 350);
 function shotOptions(A){
   const w=W(), h=H(), found=stableBalls(A);
   const cue = cueFromMark(A, found) || pickCue(A, found) || detect(A); if(!cue) return {err:'Couldn’t find the cue ball'};
@@ -1818,6 +1827,71 @@ function coachAfterShot(e){
   return out; }
 
 // ---------- 3. run-out practice: plan the shot AND where the cue ball should land for the next one ----------
+// ---------- bar pool: two players, regular 8-ball with a 15-ball rack ----------
+// The camera watches each shot: it waits for the cue ball to leave its spot, then for the table to go still, and compares
+// the balls before and after. Each ball is sorted as solid, stripe or the 8 from how much white it shows and how dark it is.
+// It can't read numbers, so anything it gets wrong is one tap to fix (switch turn, undo, swap groups).
+var bar=null;
+function ballKind(A,b){ const L=ballLook(A,b), c=b.col, s=c[0]+c[1]+c[2], mx=Math.max(...c), mn=Math.min(...c);
+  if(L.wf>=.75) return 'cue'; if(s<170 && mx-mn<45) return 'eight'; return L.wf>=.1 ? 'stripe' : 'solid'; }
+function barCensus(A){ const found=stableBalls(A), cue=pickCue(A,found), w=W(), h=H();
+  const balls=found.filter(b=>!cue || Math.hypot((b.u-cue.u)*w,(b.v-cue.v)*h)>BALL_D*.8).map(b=>({u:b.u,v:b.v,kind:ballKind(A,b)}));
+  const n={solid:0,stripe:0,eight:0}; balls.forEach(b=>n[b.kind]++); return {cue, balls, n}; }
+function barStart(){ const names=st.barNames||['Marc','Sheila'];
+  bar={names, turn:0, groups:null, broke:false, hist:[], over:null, msg:`${names[0]} to break`, phase:'aim', A:null, cue:null, census:null, prevA:null, stillAt:0, left:0, waitCue:false};
+  barSnap(); barDraw(); }
+function barStop(){ bar=null; $('bar').style.display='none'; }
+function barSnap(){ const A=rectify(); if(!A) return; const c=barCensus(A); bar.A=A; bar.census=c; bar.cue=c.cue?{u:c.cue.u,v:c.cue.v}:null; bar.left=0; bar.stillAt=0; bar.prevA=A; }
+function barLeft(){ return bar.census ? bar.census.n : {solid:7,stripe:7,eight:1}; }
+function barDraw(){ if(!bar) return; const el=$('bar'), n=barLeft();
+  const grp=i=>{ if(!bar.groups) return bar.broke?'open table':'—'; const g=bar.groups[i]; return `${g==='solid'?'solids':'stripes'} · ${n[g]} left${n[g]===0?' → shoot the 8':''}`; };
+  el.innerHTML=`${[0,1].map(i=>`<div class="pl ${bar.turn===i&&!bar.over?'up':''}">${bar.turn===i&&!bar.over?'▶':'&nbsp;&nbsp;'}<input data-pl="${i}" value="${esc(bar.names[i])}"><span class="grp">${grp(i)}</span></div>`).join('')}
+    <div class="msg">${esc(bar.msg)}</div>
+    <div class="btns"><button data-bar="switch">Switch turn</button><button data-bar="foul">Foul → ball in hand</button><button data-bar="swap">Swap groups</button><button data-bar="undo">Undo last shot</button><button data-bar="new">New rack</button></div>
+    <div class="tip" style="margin-top:6px">Step back after each shot — it scores when the balls stop.</div>`;
+  el.style.display='block';
+  el.querySelectorAll('input').forEach(inp=>inp.onchange=()=>{ bar.names[+inp.dataset.pl]=inp.value||`Player ${+inp.dataset.pl+1}`; st.barNames=bar.names.slice(); save(); barDraw(); });
+  el.querySelectorAll('button').forEach(b=>b.onclick=()=>barAct(b.dataset.bar)); }
+function barPush(){ bar.hist.push(JSON.stringify({turn:bar.turn,groups:bar.groups,broke:bar.broke,over:bar.over,msg:bar.msg})); if(bar.hist.length>30) bar.hist.shift(); }
+function barAct(a){ if(!bar) return; const other=1-bar.turn;
+  if(a==='undo'){ const h=bar.hist.pop(); if(h) Object.assign(bar,JSON.parse(h)); bar.msg='Undone — '+bar.msg; }
+  else { barPush();
+    if(a==='switch'){ bar.turn=other; bar.msg=`${bar.names[bar.turn]}'s turn`; }
+    if(a==='foul'){ bar.turn=other; bar.msg=`Foul — ${bar.names[bar.turn]} has ball in hand`; }
+    if(a==='swap' && bar.groups){ bar.groups=[bar.groups[1],bar.groups[0]]; bar.msg=`${bar.names[0]}: ${bar.groups[0]}s · ${bar.names[1]}: ${bar.groups[1]}s`; }
+    if(a==='new'){ const names=bar.names, loser=bar.over!=null?1-bar.over:bar.turn; barStart(); bar.names=names; bar.turn=loser; bar.msg=`Rack 'em — ${names[loser]} to break`; } }
+  barSnap(); barDraw(); }
+// one shot finished: before = census at the start, after = census now
+function barJudge(after, A){ const before=bar.census, made={solid:Math.max(0,before.n.solid-after.n.solid), stripe:Math.max(0,before.n.stripe-after.n.stripe), eight:Math.max(0,before.n.eight-after.n.eight)};
+  const scratch=!after.cue, me=bar.turn, other=1-me, nm=bar.names, any=made.solid+made.stripe; barPush();
+  const what=[made.solid?`${made.solid} solid${made.solid>1?'s':''}`:'', made.stripe?`${made.stripe} stripe${made.stripe>1?'s':''}`:'', made.eight?'the 8':''].filter(Boolean).join(' + ')||'nothing';
+  if(!bar.broke){ bar.broke=true;
+    if(made.eight && !scratch){ bar.over=me; bar.msg=`8 on the break — ${nm[me]} wins!`; }
+    else if(scratch){ bar.turn=other; bar.msg=`Scratch on the break — ${nm[other]}, ball in hand (open table)`; }
+    else if(any){ bar.msg=`${nm[me]} made ${what} on the break — still ${nm[me]}, table's open`; }
+    else { bar.turn=other; bar.msg=`Nothing down on the break — ${nm[other]}'s turn, table's open`; }
+    return; }
+  if(made.eight){ const mine=bar.groups&&bar.groups[me], cleared=mine && after.n[mine]===0 && before.n[mine]-made[mine]<=0;
+    if(cleared && !scratch){ bar.over=me; bar.msg=`${nm[me]} made the 8 — ${nm[me]} wins!`; }
+    else { bar.over=other; bar.msg=`${nm[me]} ${scratch?'scratched on':'made'} the 8 early — ${nm[other]} wins`; }
+    return; }
+  if(!bar.groups && any && !scratch){ const g = made.solid>=made.stripe ? 'solid':'stripe'; bar.groups = me===0 ? [g, g==='solid'?'stripe':'solid'] : [g==='solid'?'stripe':'solid', g];
+    bar.msg=`${nm[me]} made ${what} — ${nm[me]} is ${g}s, keep shooting`; return; }
+  if(scratch){ bar.turn=other; bar.msg=`Scratch${any?` (made ${what})`:''} — ${nm[other]}, ball in hand`; return; }
+  const mine=bar.groups?bar.groups[me]:null, good = mine ? made[mine]>0 : any>0;
+  if(good){ bar.msg=`${nm[me]} made ${what} — keep shooting`; }
+  else { bar.turn=other; bar.msg=`${nm[me]} ${any?`made ${what} (not theirs)`:'missed'} — ${nm[other]}'s turn`; } }
+function barTick(){ if(!bar||bar.over!=null||mode!=='play'||camState!=='on'||capturing) return; const A=rectify(); if(!A) return; const now=performance.now();
+  if(!bar.census || !bar.A){ barSnap(); barDraw(); return; }
+  if(bar.waitCue){ const fd=frameDiff(bar.prevA,A); bar.prevA=A; if(fd>.004){ bar.stillAt=0; return; } if(!bar.stillAt){ bar.stillAt=now; return; } if(now-bar.stillAt<1000) return;
+    if(!pickCue(A,findBalls(A))) return; bar.waitCue=false; barSnap(); barDraw(); return; }
+  if(!bar.cue){ barSnap(); return; }
+  if(!bar.left){ const sc=spotChange(bar.A,A,bar.cue.u,bar.cue.v,0), rc=ringChange(bar.A,A,bar.cue.u,bar.cue.v); if(sc>.4 && rc<.3){ bar.left=now; bar.prevA=A; bar.stillAt=0; } return; }
+  const fd=frameDiff(bar.prevA,A); bar.prevA=A; if(fd>.004){ bar.stillAt=0; return; } if(!bar.stillAt){ bar.stillAt=now; return; } if(now-bar.stillAt<700) return;
+  ballHist=[]; const after=barCensus(A); barJudge(after,A);
+  if(!after.cue && bar.over==null){ bar.waitCue=true; bar.msg+=' — place the cue ball and step back'; }
+  bar.A=A; bar.census=after; bar.cue=after.cue?{u:after.cue.u,v:after.cue.v}:null; bar.left=0; bar.stillAt=0; barDraw(); }
+setInterval(barTick, 300);
 var runout=null;
 function predictEnd(cbP, obP, pk, tip){ const w=W(), h=H(), items=[{t:'ball',u:cbP[0]/w,v:cbP[1]/h,n:0},{t:'ball',u:obP[0]/w,v:obP[1]/h,n:1},{t:'line',style:'ob',pts:[[obP[0]/w,obP[1]/h],[pk[0]/w,pk[1]/h]]}];
   const pr=shotAids(items,{tip,speed:3}).pred[0]; return pr ? pr.pts[pr.pts.length-1] : null; }
