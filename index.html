@@ -768,11 +768,12 @@ function watchSpot(){ const b=placeItems(); const cue=b.find(it=>it.n===0);
 var placed=null, armedRef=null, needCheck=true;
 function checkPlacement(A){
   const balls=placeItems(); if(!balls.length){ placed=null; return true; }
-  const prev=placed||{}; placed={};
+  const prev=placed||{}; placed={}; const fbAll=balls.some(it=>it.n!==0)?findBalls(A):[];
+  const ballAt=(it,r)=>fbAll.some(b=>Math.hypot((b.u-it.u)*W(),(b.v-it.v)*H())<r);
   balls.forEach((it,i)=>{ const key=it.u.toFixed(4)+','+it.v.toFixed(4);
     const T=st.cam.tol||6;  // 6 px = 1.5 inches
     let ok = it.n===0 ? (spotWhite(A,it.u,it.v,T)>.35 || (!!emptyRef && spotChange(emptyRef,A,it.u,it.v,T)>.45))
-                      : emptyRef ? spotChange(emptyRef,A,it.u,it.v,T)>.45 : null;  // null = can't tell without an empty-table photo
+                      : ballAt(it,2.2) || (!!emptyRef && spotChange(emptyRef,A,it.u,it.v,T)>.45);
     if(ok && emptyRef && ringChange(emptyRef,A,it.u,it.v)>.35) ok=false;   // something bigger than a ball is there (a person, a hand, the cue)
     placed[key]=ok; if(ok && !prev[key]) sndBlip(); });
   return Object.values(placed).every(v=>v!==false);
@@ -861,7 +862,8 @@ function tick(){
             finishWhenSettled(A, det); return; } }
         else track.prevDet={u:det.u,v:det.v,t:now}; }
       else { track.prevDet=null; if(det) refreshSetup(A, det);
-        if(det && emptyRef && track.obs.length && placeItems().some(it=>it.n!==0 && spotChange(emptyRef,A,it.u,it.v,st.cam.tol||6)<.2 && ringChange(emptyRef,A,it.u,it.v)<.2)){
+        const obItems=placeItems().filter(it=>it.n!==0), fbNow=obItems.length&&det?findBalls(A):[];
+        if(det && obItems.some(it=>!fbNow.some(b=>Math.hypot((b.u-it.u)*W(),(b.v-it.v)*H())<3.5)) && fbNow.length>0){
           track.offAt=track.offAt||now; if(now-track.offAt>800){ track.offAt=0; recEnd(false); track=null; enterPlacing(); toast('A ball left its circle — put it back (it dings when it’s in)'); render(); return; } }
         else track.offAt=0;
         if(!det && spotWhite(A,track.cbStart.u,track.cbStart.v,st.cam.tol||6)<.12){ track.goneAt=track.goneAt||now; if(now-track.goneAt>8000){ shotState='busy'; finishShotFeedback(A, null); enterPlacing(); render(); return; } }
