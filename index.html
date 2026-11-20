@@ -1668,7 +1668,7 @@ function ballLook(A,b){ const [su,sv]=toSeen(b.u,b.v), cx=su*A.gw, cy=sv*A.gh, r
 // Cue ball = the ball that is white all the way through. A stripe can be just as bright, but its band always shows.
 // Measured on the table: cue ball 1.00 white, stripes 0.04–0.33.
 function pickCue(A, found){
-  const c=found.map(b=>{ const L=ballLook(A,b); b.wf=L.wf; b.cf=L.cf; return b; }).filter(b=>b.wf>=.45).sort((a,b)=>b.wf-a.wf);
+  const c=found.map(b=>{ const L=ballLook(A,b); b.wf=L.wf; b.cf=L.cf; return b; }).filter(b=>b.wf>=.75).sort((a,b)=>b.wf-a.wf);
   if(!c.length) return null; if(c[1] && c[0].wf-c[1].wf<.15) c[0].unsure=true; return c[0]; }
 // A tapped cue ball is remembered until it leaves its spot (it moved onto clear felt, not just covered by an arm).
 var cueMark=null;
@@ -1843,21 +1843,25 @@ function runoutTick(){
   // 3) find where the cue ball went: a plain white ball in a spot where no ball sat before the shot
   const found=findBalls(A), before=runout.before||[];
   found.forEach(b=>{ const L=ballLook(A,b); b.wf=L.wf; b.moved=!before.some(p=>dist(p,b)<1.5); });
-  const cands=found.filter(b=>b.wf>=.45).sort((a,b)=>(b.moved-a.moved)||(b.wf-a.wf)), det=cands[0]&&cands[0].moved?cands[0]:null;
+  const cands=found.filter(b=>b.wf>=.75).sort((a,b)=>(b.moved-a.moved)||(b.wf-a.wf)), det=cands[0]&&cands[0].moved?cands[0]:null;
   const pl=runout.plan, obStart=pl.x.o, obStill=found.some(b=>dist(b,obStart)<1.2);
   // the object ball is still on the table if a real ball now sits where no ball was before (other than the cue ball) and its colour fits
   const movedBalls=found.filter(b=>b.moved && b!==det && !(b.wf>=.6)), f=!obStill && movedBalls.find(b=>colClose(b.col, pl.x.o.col));
   const made=!obStill && !f;
   const lines=[made?`Made the ${pl.x.o.name} ball ✓`:obStill?`Missed — the ${pl.x.o.name} ball didn’t move`:`Missed the ${pl.x.o.name} ball`];
   let zoneErr=null, inZone=false;
-  if(!det){ lines.push('Couldn’t find the cue ball — scratch? Tap it on the camera picture if it’s on the table.'); cueMark=null; }
+  if(!det){ lines.push('Scratch? Place the cue ball anywhere and step back — I’ll re-plan once it’s down.'); cueMark=null; runout.waitCue=true; }
   else { cueMark={u:det.u,v:det.v,A,t:now,auto:true};
     zoneErr = pl.zone ? Math.hypot(det.u*w-pl.zone.c[0], det.v*h-pl.zone.c[1]) : null; inZone = zoneErr!=null && zoneErr<=7;
     if(zoneErr!=null) lines.push(inZone?'Cue ball in the position zone ✓':`Cue ball ${zoneErr.toFixed(0)}" from the position zone`);
     if(pl.end){ const pe=Math.hypot(det.u*w-pl.end[0], det.v*h-pl.end[1]); runout.travel=(runout.travel||[]).concat([{tip:pl.tip[1],pred:pl.end,got:[det.u*w,det.v*h],cbFrom:[runout.cue.u*w,runout.cue.v*h],ob:pl.x.ob,pk:pl.x.pk,cut:pl.x.cut}]); window.__runoutLog=runout.travel; } }
   runout.n++; if(made&&(inZone||zoneErr==null)) runout.ok++;
   st.log=(st.log||[]).concat([{t:Date.now(),drill:'Run-out',keys:['position play'],made,err:zoneErr,posOK:zoneErr==null?null:inZone}]).slice(-1500); save();
-  sndScore(made?(inZone?3:1):0); runout.plan=null; showFeedback(lines.concat(['Re-planning…'])); setTimeout(runoutPlan, 2500); }
+  sndScore(made?(inZone?3:1):0); runout.plan=null; showFeedback(lines.concat(runout.waitCue?[]:['Re-planning…'])); if(!runout.waitCue) setTimeout(runoutPlan, 2500); }
+// after a scratch: re-plan once a plain white ball is on the table and nothing has moved for a second
+setInterval(()=>{ if(!runout||!runout.waitCue||mode!=='play'||camState!=='on') return; const A=rectify(); if(!A) return;
+  const fd=frameDiff(runout.waitPrev,A); runout.waitPrev=A; if(fd>.004){ runout.waitStill=0; return; } if(!runout.waitStill){ runout.waitStill=performance.now(); return; }
+  if(performance.now()-runout.waitStill<1000) return; if(!pickCue(A,findBalls(A))) return; runout.waitCue=false; runoutPlan(); }, 400);
 setInterval(runoutTick, 300);
 // ---------- keyboard ----------
 addEventListener('keydown', e=>{
