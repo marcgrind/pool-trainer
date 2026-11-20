@@ -1524,19 +1524,22 @@ function jawBalls(found, diag){
       for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){ const q=o+(dy*gw+dx)*3; const d=Math.abs(Pt.px[o]-ref[q])+Math.abs(Pt.px[o+1]-ref[q+1])+Math.abs(Pt.px[o+2]-ref[q+2]); if(d<best) best=d; }
       if(best>80) mask[y*gw+x]=1; }
     const lab=new Uint8Array(gw*gh), q=new Int32Array(gw*gh);
-    for(let s0=0;s0<gw*gh;s0++){ if(!mask[s0]||lab[s0]) continue; let h=0,t=0,n=0,sx=0,sy=0,x0=1e9,x1=-1,y0=1e9,y1=-1,cr=0,cg=0,cb=0; q[t++]=s0; lab[s0]=1;
-      while(h<t){ const p=q[h++], px=p%gw, py=(p/gw)|0; n++; sx+=px; sy+=py; cr+=Pt.px[p*3]; cg+=Pt.px[p*3+1]; cb+=Pt.px[p*3+2]; if(px<x0)x0=px; if(px>x1)x1=px; if(py<y0)y0=py; if(py>y1)y1=py;
+    for(let s0=0;s0<gw*gh;s0++){ if(!mask[s0]||lab[s0]) continue; let h=0,t=0,n=0,sx=0,sy=0,x0=1e9,x1=-1,y0=1e9,y1=-1,cr=0,cg=0,cb=0,rr=0,rg=0,rb=0; q[t++]=s0; lab[s0]=1;
+      while(h<t){ const p=q[h++], px=p%gw, py=(p/gw)|0; n++; sx+=px; sy+=py; cr+=Pt.px[p*3]; cg+=Pt.px[p*3+1]; cb+=Pt.px[p*3+2]; rr+=ref[p*3]; rg+=ref[p*3+1]; rb+=ref[p*3+2]; if(px<x0)x0=px; if(px>x1)x1=px; if(py<y0)y0=py; if(py>y1)y1=py;
         for(const nb of [p-1,p+1,p-gw,p+gw]){ if(nb<0||nb>=gw*gh||(nb===p-1&&px===0)||(nb===p+1&&px===gw-1)) continue; if(mask[nb]&&!lab[nb]){ lab[nb]=1; q[t++]=nb; } } }
       const bw=x1-x0+1, bh=y1-y0+1, ratio=n/target, asp=bw/bh, fill=n/(bw*bh), touches=x0===1||y0===1||x1===gw-2||y1===gh-2;
       const [u,v]=toTrue(Pt.u0+(sx/n+.5)/(W()*P), Pt.v0+(sy/n+.5)/(H()*P));
       const info={jaw:i,u:+(u*W()).toFixed(1),v:+(v*H()).toFixed(1),n,ratio:+ratio.toFixed(2),asp:+asp.toFixed(2),fill:+fill.toFixed(2),col:[cr/n,cg/n,cb/n].map(Math.round)};
       if(n>=8 && diag) diag.push(info);
-      if(ratio<.3||ratio>1.8||asp<.45||asp>2.2||fill<.4||touches){ info.why='jaw shape'; continue; }   // an arm reaching in is big and runs off the patch
+      if(ratio<.3||ratio>1.8||asp<.45||asp>2.2||fill<.4||touches){ info.why='jaw shape'; continue; }
+      // same colour as the empty pocket, only darker or brighter = a shadow or the camera's exposure, not a ball
+      const t1=cr+cg+cb+1, t0=rr+rg+rb+1; info.dc=+Math.hypot(cr/t1-rr/t0, cg/t1-rg/t0).toFixed(3);
+      if(info.dc<.035){ info.why='jaw shade'; continue; }   // an arm reaching in is big and runs off the patch
       if(Math.hypot((u-pu)*W(),(v-pv)*H())>4.2){ info.why='jaw far'; continue; }                     // on the open felt: the main finder's job
       if(found.some(b=>Math.hypot((b.u-u)*W(),(b.v-v)*H())<1.8)){ info.why='jaw dup'; continue; }
       info.why='jaw ok'; out.push({u,v,n,col:[cr/n,cg/n,cb/n],name:hueName([cr/n,cg/n,cb/n]),jaw:true}); } });
   // one ball can show as two pieces (ball + its shadow on the felt): keep the bigger piece
-  out.sort((a,b)=>b.n-a.n); return out.filter((b,i)=>!out.slice(0,i).some(c=>Math.hypot((c.u-b.u)*W(),(c.v-b.v)*H())<BALL_D*1.2)); }
+  out.sort((a,b)=>b.n-a.n); return out.filter((b,i)=>!out.slice(0,i).some(c=>Math.hypot((c.u-b.u)*W(),(c.v-b.v)*H())<BALL_D*1.5)); }
 function segBlocked(a,b,balls,skip,w,h){ const ax=a[0],ay=a[1],dx=b[0]-ax,dy=b[1]-ay,L=dx*dx+dy*dy||1;
   return balls.some(o=>{ if(skip.includes(o)) return false; const px=o.u*w, py=o.v*h; let t=((px-ax)*dx+(py-ay)*dy)/L; if(t<=0||t>=1) return false; return Math.hypot(px-ax-t*dx,py-ay-t*dy)<BALL_D*.98; }); }
 // ---------- cue ball: pick the plain white ball (no stripe band), or use the one the player tapped ----------
