@@ -732,7 +732,7 @@ function capture(){
   return blankGrab().then(A=> A ? detect(A) : (toast('Set the camera corners first'), null));
 }
 var emptyRef=null;
-function captureEmpty(){ blankGrab().then(A=>{ if(!A){ toast('Start the camera and set its corners first'); return; } emptyRef=A; emptyCam=new Uint8ClampedArray(tkGrab()); toast('Empty table captured — ball placement checks are on'); buildPanel(); }); }
+function captureEmpty(){ blankGrab().then(A=>{ if(!A){ toast('Start the camera and set its corners first'); return; } emptyRef=A; savePocketRefs(); emptyCam=new Uint8ClampedArray(tkGrab()); toast('Empty table captured — ball placement checks are on'); buildPanel(); }); }
 
 // ---------- sounds ----------
 let actx=null;
@@ -1265,7 +1265,7 @@ function voiceCmd(t){ listenUntil=0;
   else if(/\bscore\b/.test(t)){ heardAt=performance.now(); toast('Heard: score'); capture().then(det=>{ finishShotFeedback(null, det); scoreShot(det); }); }
 }
 function again(){ result=null; if(game&&game.over){ startGame(game.type); return; } enterPlacing(); render(); speak('Set up the balls'); }
-window.__pt = { rectPatch:(a,b,c,d)=>rectPatch(a,b,c,d), POCKETS:()=>POCKETS, W:()=>W(), H:()=>H(), toSeen:(u,v)=>toSeen(u,v), ballLook:(A,b)=>ballLook(A,b), pickCue:(A,f)=>pickCue(A,f), get cueMark(){ return cueMark; }, setCueMark:(u,v)=>setCueMark(u,v), camToTable:(x,y)=>camToTable(x,y), rectify:()=>rectify(), findBalls:(A,d)=>findBalls(A,d), detect:A=>detect(A), feltChroma:A=>feltChroma(A), shotOptions:A=>shotOptions(A), whiteDbg:A=>{ const o=shotOptions(A); return {cue:o.cue&&[o.cue.u*W(),o.cue.v*H(),o.cue.wf], balls:(o.balls||[]).map(b=>[+(b.u*W()).toFixed(1),+(b.v*H()).toFixed(1),+(b.wf||0).toFixed(2),b.name])}; } };
+window.__pt = { savePocketRefs:()=>savePocketRefs(), jawBalls:(f,d)=>jawBalls(f,d), rectPatch:(a,b,c,d)=>rectPatch(a,b,c,d), POCKETS:()=>POCKETS, W:()=>W(), H:()=>H(), toSeen:(u,v)=>toSeen(u,v), ballLook:(A,b)=>ballLook(A,b), pickCue:(A,f)=>pickCue(A,f), get cueMark(){ return cueMark; }, setCueMark:(u,v)=>setCueMark(u,v), camToTable:(x,y)=>camToTable(x,y), rectify:()=>rectify(), findBalls:(A,d)=>findBalls(A,d), detect:A=>detect(A), feltChroma:A=>feltChroma(A), shotOptions:A=>shotOptions(A), whiteDbg:A=>{ const o=shotOptions(A); return {cue:o.cue&&[o.cue.u*W(),o.cue.v*H(),o.cue.wf], balls:(o.balls||[]).map(b=>[+(b.u*W()).toFixed(1),+(b.v*H()).toFixed(1),+(b.wf||0).toFixed(2),b.name])}; } };
 window.__poolDebug = { get track(){ return track; }, get lastShot(){ return lastShot; }, get state(){ return shotState; } };
 
 // ---------- shot recorder: saves the webcam clip + tracking data for each shot ----------
@@ -1504,6 +1504,37 @@ function findBalls(A, diag){
       if(xx<m+3||yy<m+3||xx>=A.gw-m-3||yy>=A.gh-m-3||dd>r1*r1||dd<r0*r0) continue; rn++; if(mask[yy*A.gw+xx]) rk++; }   // skip the cushion edge
     if(rn && rk/rn>.22){ info.why='ring '+(rk/rn).toFixed(2); continue; } info.why='ok';
     out.push({u,v,col:[cr/n,cg/n,cb/n],name:hueName([cr/n,cg/n,cb/n])}); }
+  return out.concat(jawBalls(out, diag)); }
+// ---------- balls sitting in the pocket jaws ----------
+// Over the dark pocket a ball doesn't stand out from "the felt around it", so each pocket is compared with a picture
+// of the same pocket taken empty (saved by "Capture empty table"). Anything ball-sized and round that wasn't there is a ball.
+const PK_HALF=5;   // inches either side of the pocket centre
+const pocketBox = (pu,pv) => [pu-PK_HALF/W(), pu+PK_HALF/W(), pv-PK_HALF/H(), pv+PK_HALF/H()];
+function savePocketRefs(){ let full=null; const refs=POCKETS.map(([pu,pv])=>{ const Pt=rectPatch(...pocketBox(pu,pv),full); if(!Pt) return null; full=Pt.img; return {gw:Pt.gw,gh:Pt.gh,px:b64(Pt.px)}; });
+  if(refs.every(Boolean)){ st.cam.pocketRef=refs; st.cam.pocketRefKey=JSON.stringify(st.cam.pts); save(); } }
+var pkCache=null;
+function jawBalls(found, diag){
+  const refs=st.cam.pocketRef; if(!refs || !vid.videoWidth) return [];
+  if(!pkCache || pkCache.refs!==refs) pkCache={refs, px:refs.map(r=>unb64(r.px))};
+  const out=[], target=Math.PI*(R*P)**2; let full=null;
+  POCKETS.forEach(([pu,pv],i)=>{ const Pt=rectPatch(...pocketBox(pu,pv),full); if(!Pt) return; full=Pt.img; const ref=pkCache.px[i], gw=Pt.gw, gh=Pt.gh;
+    if(refs[i].gw!==gw || refs[i].gh!==gh) return;
+    const mask=new Uint8Array(gw*gh);
+    for(let y=1;y<gh-1;y++) for(let x=1;x<gw-1;x++){ const o=(y*gw+x)*3; let best=1e9;   // allow a 1 px shift (camera auto-adjust)
+      for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){ const q=o+(dy*gw+dx)*3; const d=Math.abs(Pt.px[o]-ref[q])+Math.abs(Pt.px[o+1]-ref[q+1])+Math.abs(Pt.px[o+2]-ref[q+2]); if(d<best) best=d; }
+      if(best>80) mask[y*gw+x]=1; }
+    const lab=new Uint8Array(gw*gh), q=new Int32Array(gw*gh);
+    for(let s0=0;s0<gw*gh;s0++){ if(!mask[s0]||lab[s0]) continue; let h=0,t=0,n=0,sx=0,sy=0,x0=1e9,x1=-1,y0=1e9,y1=-1,cr=0,cg=0,cb=0; q[t++]=s0; lab[s0]=1;
+      while(h<t){ const p=q[h++], px=p%gw, py=(p/gw)|0; n++; sx+=px; sy+=py; cr+=Pt.px[p*3]; cg+=Pt.px[p*3+1]; cb+=Pt.px[p*3+2]; if(px<x0)x0=px; if(px>x1)x1=px; if(py<y0)y0=py; if(py>y1)y1=py;
+        for(const nb of [p-1,p+1,p-gw,p+gw]){ if(nb<0||nb>=gw*gh||(nb===p-1&&px===0)||(nb===p+1&&px===gw-1)) continue; if(mask[nb]&&!lab[nb]){ lab[nb]=1; q[t++]=nb; } } }
+      const bw=x1-x0+1, bh=y1-y0+1, ratio=n/target, asp=bw/bh, fill=n/(bw*bh), touches=x0===1||y0===1||x1===gw-2||y1===gh-2;
+      const [u,v]=toTrue(Pt.u0+(sx/n+.5)/(W()*P), Pt.v0+(sy/n+.5)/(H()*P));
+      const info={jaw:i,u:+(u*W()).toFixed(1),v:+(v*H()).toFixed(1),n,ratio:+ratio.toFixed(2),asp:+asp.toFixed(2),fill:+fill.toFixed(2),col:[cr/n,cg/n,cb/n].map(Math.round)};
+      if(n>=8 && diag) diag.push(info);
+      if(ratio<.3||ratio>1.8||asp<.45||asp>2.2||fill<.4||touches){ info.why='jaw shape'; continue; }   // an arm reaching in is big and runs off the patch
+      if(Math.hypot((u-pu)*W(),(v-pv)*H())>4.2){ info.why='jaw far'; continue; }                     // on the open felt: the main finder's job
+      if(found.some(b=>Math.hypot((b.u-u)*W(),(b.v-v)*H())<1.8)){ info.why='jaw dup'; continue; }
+      info.why='jaw ok'; out.push({u,v,col:[cr/n,cg/n,cb/n],name:hueName([cr/n,cg/n,cb/n]),jaw:true}); } });
   return out; }
 function segBlocked(a,b,balls,skip,w,h){ const ax=a[0],ay=a[1],dx=b[0]-ax,dy=b[1]-ay,L=dx*dx+dy*dy||1;
   return balls.some(o=>{ if(skip.includes(o)) return false; const px=o.u*w, py=o.v*h; let t=((px-ax)*dx+(py-ay)*dy)/L; if(t<=0||t>=1) return false; return Math.hypot(px-ax-t*dx,py-ay-t*dy)<BALL_D*.98; }); }
@@ -1542,7 +1573,8 @@ function shotOptions(A){
   const all=balls.concat([cue]), cb=[cue.u*w,cue.v*h], opts=[];
   const pockets=[[0,0,'corner'],[.5,0,'side'],[1,0,'corner'],[0,1,'corner'],[.5,1,'side'],[1,1,'corner']];
   balls.forEach(o=>{ const ob=[o.u*w,o.v*h];
-    pockets.forEach(([pu,pv,kind])=>{ const pk=[pu*w,pv*h], dx=pk[0]-ob[0], dy=pk[1]-ob[1], Lp=Math.hypot(dx,dy); if(Lp<1) return;
+    pockets.forEach(([pu,pv,kind])=>{ let pk=[pu*w,pv*h]; if(Math.hypot(pk[0]-ob[0],pk[1]-ob[1])<3){ const nx=pu===0?-1:pu===1?1:0, ny=pv===0?-1:1, L=Math.hypot(nx,ny); pk=[pk[0]+nx/L*3, pk[1]+ny/L*3]; }   // ball in the jaws: aim through it into the pocket
+      const dx=pk[0]-ob[0], dy=pk[1]-ob[1], Lp=Math.hypot(dx,dy); if(Lp<1) return;
       const ux=dx/Lp, uy=dy/Lp, gh=[ob[0]-ux*BALL_D, ob[1]-uy*BALL_D], ax=gh[0]-cb[0], ay=gh[1]-cb[1], La=Math.hypot(ax,ay); if(La<1) return;
       const cut=Math.acos(Math.max(-1,Math.min(1,(ax*ux+ay*uy)/La)))*180/Math.PI; if(cut>72) return;
       if(kind==='side' && Math.abs(uy)<Math.cos(55*Math.PI/180)) return;    // too shallow into a side pocket
