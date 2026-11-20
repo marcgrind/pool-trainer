@@ -1624,7 +1624,7 @@ function findBalls(A, diag, opt){ opt=opt||{};
 // ---------- balls sitting in the pocket jaws ----------
 // Over the dark pocket a ball doesn't stand out from "the felt around it", so each pocket is compared with a picture
 // of the same pocket taken empty (saved by "Capture empty table"). Anything ball-sized and round that wasn't there is a ball.
-const PK_HALF=5;   // inches either side of the pocket centre
+const PK_HALF=6;   // inches either side of the pocket centre
 const pocketBox = (pu,pv) => [pu-PK_HALF/W(), pu+PK_HALF/W(), pv-PK_HALF/H(), pv+PK_HALF/H()];
 // The pictures are tied to the camera's pixels, not to the corner fit: auto-adjust may nudge the corners a little each
 // time the camera starts, so we always re-sample with the corners that were in use when the pictures were taken.
@@ -1658,7 +1658,7 @@ function jawBalls(found, diag){
       // same colour as the empty pocket, only darker or brighter = a shadow or the camera's exposure, not a ball
       const t1=cr+cg+cb+1, t0=rr+rg+rb+1; info.dc=+Math.hypot(cr/t1-rr/t0, cg/t1-rg/t0).toFixed(3);
       if(info.dc<.035){ info.why='jaw shade'; continue; }   // an arm reaching in is big and runs off the patch
-      if(Math.hypot((u-pu)*W(),(v-pv)*H())>4.2){ info.why='jaw far'; continue; }
+      if(Math.hypot((u-pu)*W(),(v-pv)*H())>5.2){ info.why='jaw far'; continue; }
       const past=Math.max(-u*W(), (u-1)*W(), -v*H(), (v-1)*H());   // inches beyond the cushion line, into the pocket
       if(past>.8){ info.why='jaw down'; continue; }   // a ball that has dropped sits deeper than one hanging in the jaws                     // on the open felt: the main finder's job
       if(found.some(b=>Math.hypot((b.u-u)*W(),(b.v-v)*H())<1.8)){ info.why='jaw dup'; continue; }
