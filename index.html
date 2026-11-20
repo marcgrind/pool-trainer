@@ -1491,16 +1491,18 @@ function findBalls(A, diag){
 function segBlocked(a,b,balls,skip,w,h){ const ax=a[0],ay=a[1],dx=b[0]-ax,dy=b[1]-ay,L=dx*dx+dy*dy||1;
   return balls.some(o=>{ if(skip.includes(o)) return false; const px=o.u*w, py=o.v*h; let t=((px-ax)*dx+(py-ay)*dy)/L; if(t<=0||t>=1) return false; return Math.hypot(px-ax-t*dx,py-ay-t*dy)<BALL_D*.98; }); }
 // ---------- cue ball: pick the plain white ball (no stripe band), or use the one the player tapped ----------
-// Look inside the ball (75% of its radius): share of clean white pixels and share of strongly coloured ones (a stripe's band).
-function ballLook(A,b){ const [su,sv]=toSeen(b.u,b.v), cx=su*A.gw, cy=sv*A.gh, r=R*P*.75; let n=0,w=0,c=0;
+// Look inside the ball (65% of its radius, clear of the shaded edge): share of white pixels vs. band pixels.
+// A stripe's band shows as coloured OR dark pixels (blue, purple, green and maroon bands read as dark on camera).
+function ballLook(A,b){ const [su,sv]=toSeen(b.u,b.v), cx=su*A.gw, cy=sv*A.gh, r=R*P*.65; let n=0,w=0,c=0;
   for(let y=Math.floor(cy-r);y<=cy+r;y++) for(let x=Math.floor(cx-r);x<=cx+r;x++){ if(x<0||y<0||x>=A.gw||y>=A.gh||(x-cx)**2+(y-cy)**2>r*r) continue; n++;
     const o=(y*A.gw+x)*3, a=A.px[o],g=A.px[o+1],bb=A.px[o+2], mn=Math.min(a,g,bb), mx_=Math.max(a,g,bb);
-    if(mn>145 && mx_-mn<50) w++; else if(mx_-mn>55) c++; }
+    if(mn>110 && mx_-mn<60) w++; else if(mx_-mn>55) c++; }
   return {wf:n?w/n:0, cf:n?c/n:0}; }
-// Cue ball = mostly white AND no coloured band. A stripe can be just as white, but always shows some band.
+// Cue ball = the ball that is white all the way through. A stripe can be just as bright, but its band always shows.
+// Measured on the table: cue ball 1.00 white, stripes 0.04–0.33.
 function pickCue(A, found){
-  const c=found.map(b=>{ const L=ballLook(A,b); b.wf=L.wf; b.cf=L.cf; b.cueScore=L.wf-2.5*L.cf; return b; }).filter(b=>b.wf>.3).sort((a,b)=>b.cueScore-a.cueScore);
-  return c[0] && c[0].cueScore>.2 ? c[0] : null; }
+  const c=found.map(b=>{ const L=ballLook(A,b); b.wf=L.wf; b.cf=L.cf; return b; }).filter(b=>b.wf>=.45).sort((a,b)=>b.wf-a.wf);
+  if(!c.length) return null; if(c[1] && c[0].wf-c[1].wf<.15) c[0].unsure=true; return c[0]; }
 // A tapped cue ball is remembered until it leaves its spot (it moved onto clear felt, not just covered by an arm).
 var cueMark=null;
 function setCueMark(u,v,quiet){ const A=rectify(); if(!A) return; const w=W(), h=H(), found=findBalls(A);
@@ -1511,10 +1513,10 @@ function setCueMark(u,v,quiet){ const A=rectify(); if(!A) return; const w=W(), h
 function cueFromMark(A, found){
   if(!cueMark) return null; const w=W(), h=H();
   const near=found.map(b=>({b,d:Math.hypot((b.u-cueMark.u)*w,(b.v-cueMark.v)*h)})).sort((a,b)=>a.d-b.d)[0];
-  if(near && near.d<2){ cueMark.u=near.b.u; cueMark.v=near.b.v; near.b.marked=true; return near.b; }
+  if(near && near.d<2){ cueMark.u=near.b.u; cueMark.v=near.b.v; near.b.marked=true; near.b.auto=!!cueMark.auto; return near.b; }
   const sc=spotChange(cueMark.A,A,cueMark.u,cueMark.v,0), rc=ringChange(cueMark.A,A,cueMark.u,cueMark.v);
   if(sc>.35 && rc<.2){ cueMark=null; return null; }        // the spot is clear felt now: the cue ball moved
-  return {u:cueMark.u, v:cueMark.v, col:[235,235,235], name:'white', marked:true}; }   // covered or missed by the finder: trust the tap
+  return {u:cueMark.u, v:cueMark.v, col:[235,235,235], name:'white', marked:true, auto:!!cueMark.auto}; }   // covered or missed by the finder: trust the tap
 function camToTable(nx,ny){ const inv=homog(st.cam.pts.map(p=>lensU(p[0],p[1])),[[0,0],[1,0],[1,1],[0,1]]), [ux,uy]=lensU(nx,ny), [u,v]=apply(inv,ux,uy); return toTrue(u,v); }
 function shotOptions(A){
   const w=W(), h=H(), found=findBalls(A);
@@ -1539,11 +1541,11 @@ function shotOptions(A){
 }
 function adviceText(a){
   if(a.err) return [a.err];
-  if(!a.top.length) return [`${a.balls.length} ball${a.balls.length===1?'':'s'} found — no clear pot from here. Look for a safety or a kick.`];
+  if(!a.top.length) return [`${a.balls.length} ball${a.balls.length===1?'':'s'} found — no clear pot from here. Look for a safety or a kick.`].concat(cueHint());
   const L=[`${a.balls.length} ball${a.balls.length===1?'':'s'} found. Best options:`];
   a.top.forEach((x,i)=>{ const tip = x.cut<12 ? 'nearly straight — stop or draw to stay in line' : x.cut<35 ? 'medium cut — stun or follow to control the cue ball' : 'thin cut — firm, center ball; cue ball runs off near the tangent line';
     L.push(`${i+1}) ${x.o.name} ball → ${x.pocketName.replace(/ \(rail [AB]\)/,'')}: ${Math.round(x.cut)}° cut, ${Math.round(x.La)}" to contact — ${tip}`); });
-  return L; }
+  return L.concat(cueHint()); }
 function adviceSVG(){ if(!advice||!advice.top) return ''; const w=W(),h=H(), X=p=>fx(p[0]/w), Y=p=>fy(p[1]/h); let s='';
   const cols=['#39ff14','#ffd400','#00e5ff'];
   advice.balls.forEach(b=> s+=`<circle cx="${fx(b.u)}" cy="${fy(b.v)}" r="${R}" fill="rgb(${b.col.map(Math.round).join(',')})" stroke="#000" stroke-width=".15"/>`);
@@ -1554,7 +1556,13 @@ function adviceSVG(){ if(!advice||!advice.top) return ''; const w=W(),h=H(), X=p
     s+=`<circle cx="${X(x.gh)}" cy="${Y(x.gh)}" r="${R}" fill="none" stroke="${c}" stroke-width=".18" stroke-dasharray=".4 .3"/>`;
     s+=`<text x="${X(x.ob)}" y="${Y(x.ob)}" dy="-2.4" font-size="1.8" font-weight="700" fill="${c}" text-anchor="middle">${i+1}</text>`; });
   return s; }
-function drawAdviceOnCamera(){ if(!advice||!advice.top||!vid.videoWidth) return; const M=camH(1,1), k=ov.width/vid.videoWidth, w=W(), h=H();
+function cueHint(){ const c=advice&&advice.cue; if(!c) return []; return [c.marked ? (c.auto ? 'Cue ball: followed from the last shot — tap the right one if that’s wrong' : 'Cue ball: the one you tapped (kept until it moves)') : c.unsure ? 'Not sure which white ball is the cue ball — tap it on the camera picture' : 'Wrong cue ball? Tap the right one on the camera picture'] ; }
+function drawCueOnCamera(){ const c=advice&&advice.cue; if(!c||!vid.videoWidth) return; const M=camH(1,1), k=ov.width/vid.videoWidth;
+  const [su,sv]=toSeen(c.u,c.v), [x,y]=camMap(M,su,sv), [x2,y2]=camMap(M,su+R/W(),sv), r=Math.max(9,Math.hypot(x2-x,y2-y)*k+5), col=c.marked?'#ff3df2':c.unsure?'#ffd400':'#ffffff';
+  ovx.setLineDash(c.marked?[]:[5,4]); ovx.lineWidth=7; ovx.strokeStyle='rgba(0,0,0,.85)'; ovx.beginPath(); ovx.arc(x*k,y*k,r,0,7); ovx.stroke();
+  ovx.lineWidth=3; ovx.strokeStyle=col; ovx.beginPath(); ovx.arc(x*k,y*k,r,0,7); ovx.stroke(); ovx.setLineDash([]);
+  const lab=c.marked?(c.auto?'CB':'CB (tapped)'):c.unsure?'CB?':'CB'; ovx.font='bold 15px system-ui'; ovx.lineWidth=4; ovx.strokeStyle='#000'; ovx.strokeText(lab,x*k+r+4,y*k+5); ovx.fillStyle=col; ovx.fillText(lab,x*k+r+4,y*k+5); }
+function drawAdviceOnCamera(){ drawCueOnCamera(); if(!advice||!advice.top||!vid.videoWidth) return; const M=camH(1,1), k=ov.width/vid.videoWidth, w=W(), h=H();
   const felt=p=>{ const [a,b]=linInvert(p[0]/w,p[1]/h), [x,y]=camMap(M,a,b); return [x*k,y*k]; };
   const cols=['#39ff14','#ffd400','#00e5ff'];
   advice.top.forEach((x,i)=>{ const seg=(a,b,dash,lw)=>{ ovx.setLineDash(dash||[]); [[lw+4,'rgba(0,0,0,.7)'],[lw,cols[i]]].forEach(([L,c])=>{ ovx.lineWidth=L; ovx.strokeStyle=c; ovx.beginPath(); const p=felt(a), q=felt(b); ovx.moveTo(p[0],p[1]); ovx.lineTo(q[0],q[1]); ovx.stroke(); }); ovx.setLineDash([]); };
@@ -1642,7 +1650,7 @@ function planRunout(a){
 function runoutText(pl){ if(!pl) return ['No clear pot — play a safety, then press O to re-plan.'];
   const L=[`Run-out: pot the ${pl.x.o.name} ball in the ${pl.x.pocketName.replace(/ \(rail [AB]\)/,'')} (${Math.round(pl.x.cut)}° cut)`, `Hit: ${pl.tip[1]}, medium speed`];
   if(pl.zone) L.push(`Goal: cue ball into the green circle for the ${pl.next.name} ball next`); else L.push('Last ball — just make it.');
-  return L; }
+  return L.concat(cueHint()); }
 function runoutSVG(){ if(!runout||!runout.plan) return ''; const pl=runout.plan, w=W(), h=H(); let s='';
   if(pl.zone) s+=`<circle cx="${fx(pl.zone.c[0]/w)}" cy="${fy(pl.zone.c[1]/h)}" r="7" fill="#39ff14" fill-opacity=".18" stroke="#39ff14" stroke-width=".25"/>`;
   if(pl.end) s+=`<circle cx="${fx(pl.end[0]/w)}" cy="${fy(pl.end[1]/h)}" r="${R}" fill="none" stroke="#fff" stroke-width=".18" stroke-dasharray=".3 .3"/>`;
@@ -1652,20 +1660,35 @@ function drawRunoutOnCamera(){ if(!runout||!runout.plan||!runout.plan.zone||!vid
   ovx.fillStyle='rgba(57,255,20,.22)'; ovx.fill(); ovx.lineWidth=5; ovx.strokeStyle='rgba(0,0,0,.6)'; ovx.stroke(); ovx.lineWidth=2.5; ovx.strokeStyle='#39ff14'; ovx.stroke(); }
 function runoutPlan(){ const A=rectify(); if(!A) return; advice=shotOptions(A); if(advice.err){ showFeedback([advice.err]); return; }
   const pl=planRunout(advice); if(pl) advice.top=[pl.x].concat(advice.top.filter(t=>t!==pl.x)).slice(0,1);
-  runout={plan:pl, cue:{u:advice.cue.u,v:advice.cue.v}, col:pl?(()=>{ const c=pl.x.o.col, t=c[0]+c[1]+c[2]+1; return [c[0]/t,c[1]/t,t]; })():null, prevDet:null, n:(runout&&runout.n)||0, ok:(runout&&runout.ok)||0};
+  runout={plan:pl, A, before:advice.balls.map(b=>({u:b.u,v:b.v})).concat([{u:advice.cue.u,v:advice.cue.v}]), left:0, prevA:null, stillAt:0, travel:runout&&runout.travel, cue:{u:advice.cue.u,v:advice.cue.v}, col:pl?(()=>{ const c=pl.x.o.col, t=c[0]+c[1]+c[2]+1; return [c[0]/t,c[1]/t,t]; })():null, prevDet:null, n:(runout&&runout.n)||0, ok:(runout&&runout.ok)||0};
   showFeedback(runoutText(pl).concat(runout.n?[`Run so far: ${runout.ok}/${runout.n} shots with position`]:[])); render(); drawOv(); }
+// Share of the table that changed between two frames (sampled) — used to tell when everything has stopped rolling.
+function frameDiff(A,B){ if(!A||!B) return 1; let n=0,ch=0; for(let k=0;k<A.gw*A.gh;k+=5){ const o=k*3; n++; if(Math.abs(A.px[o]-B.px[o])+Math.abs(A.px[o+1]-B.px[o+1])+Math.abs(A.px[o+2]-B.px[o+2])>75) ch++; } return ch/n; }
 function runoutTick(){
-  if(!runout||!runout.plan||mode!=='play'||camState!=='on'||capturing) return; const A=rectify(); if(!A) return; const det=detect(A), w=W(), h=H();
-  if(!det || Math.hypot((det.u-runout.cue.u)*w,(det.v-runout.cue.v)*h)<3){ runout.prevDet=null; return; }
-  if(runout.prevDet && Math.hypot((det.u-runout.prevDet.u)*w,(det.v-runout.prevDet.v)*h)<.6){ if(performance.now()-runout.prevDet.t<550) return;
-    const pl=runout.plan, f=runout.col?findColBall(A,runout.col):null, made=!f;
-    const zoneErr = pl.zone ? Math.hypot(det.u*w-pl.zone.c[0], det.v*h-pl.zone.c[1]) : null, inZone = zoneErr!=null && zoneErr<=7;
-    const lines=[made?`Made the ${pl.x.o.name} ball ✓`:`Missed the ${pl.x.o.name} ball`];
+  if(!runout||!runout.plan||mode!=='play'||camState!=='on'||capturing) return; const A=rectify(); if(!A||!runout.A) return; const w=W(), h=H(), now=performance.now();
+  const dist=(a,b)=>Math.hypot((a.u-b.u)*w,(a.v-b.v)*h);
+  // 1) wait until the cue ball has left its spot (spot now shows clear felt — not just an arm or the cue over it)
+  if(!runout.left){ const sc=spotChange(runout.A,A,runout.cue.u,runout.cue.v,0), rc=ringChange(runout.A,A,runout.cue.u,runout.cue.v);
+    if(sc>.4 && rc<.3) runout.left=now; else return; }
+  // 2) wait until nothing on the table has changed for ~0.6 s
+  const fd=frameDiff(runout.prevA,A); runout.prevA=A; if(fd>.004){ runout.stillAt=0; return; } if(!runout.stillAt){ runout.stillAt=now; return; } if(now-runout.stillAt<550) return;
+  // 3) find where the cue ball went: a plain white ball in a spot where no ball sat before the shot
+  const found=findBalls(A), before=runout.before||[];
+  found.forEach(b=>{ const L=ballLook(A,b); b.wf=L.wf; b.moved=!before.some(p=>dist(p,b)<1.5); });
+  const cands=found.filter(b=>b.wf>=.45).sort((a,b)=>(b.moved-a.moved)||(b.wf-a.wf)), det=cands[0]&&cands[0].moved?cands[0]:null;
+  const pl=runout.plan, obStart=pl.x.o, obStill=found.some(b=>dist(b,obStart)<1.2);
+  let f=!obStill&&runout.col?findColBall(A,runout.col):null; if(f && before.some(p=>dist(p,f)<1.5)) f=null;   // a same-coloured ball that never moved isn't ours
+  const made=!obStill && !f;
+  const lines=[made?`Made the ${pl.x.o.name} ball ✓`:obStill?`Missed — the ${pl.x.o.name} ball didn’t move`:`Missed the ${pl.x.o.name} ball`];
+  let zoneErr=null, inZone=false;
+  if(!det){ lines.push('Couldn’t find the cue ball — scratch? Tap it on the camera picture if it’s on the table.'); cueMark=null; }
+  else { cueMark={u:det.u,v:det.v,A,t:now,auto:true};
+    zoneErr = pl.zone ? Math.hypot(det.u*w-pl.zone.c[0], det.v*h-pl.zone.c[1]) : null; inZone = zoneErr!=null && zoneErr<=7;
     if(zoneErr!=null) lines.push(inZone?'Cue ball in the position zone ✓':`Cue ball ${zoneErr.toFixed(0)}" from the position zone`);
-    runout.n++; if(made&&(inZone||zoneErr==null)) runout.ok++;
-    st.log=(st.log||[]).concat([{t:Date.now(),drill:'Run-out',keys:['position play'],made,err:zoneErr,posOK:zoneErr==null?null:inZone}]).slice(-1500); save();
-    sndScore(made?(inZone?3:1):0); runout.plan=null; showFeedback(lines.concat(['Re-planning…'])); setTimeout(runoutPlan, 2500); return; }
-  if(!runout.prevDet || Math.hypot((det.u-runout.prevDet.u)*w,(det.v-runout.prevDet.v)*h)>=.6) runout.prevDet={u:det.u,v:det.v,t:performance.now()}; }
+    if(pl.end){ const pe=Math.hypot(det.u*w-pl.end[0], det.v*h-pl.end[1]); runout.travel=(runout.travel||[]).concat([{tip:pl.tip[1],pred:pl.end,got:[det.u*w,det.v*h],cbFrom:[runout.cue.u*w,runout.cue.v*h],ob:pl.x.ob,pk:pl.x.pk,cut:pl.x.cut}]); window.__runoutLog=runout.travel; } }
+  runout.n++; if(made&&(inZone||zoneErr==null)) runout.ok++;
+  st.log=(st.log||[]).concat([{t:Date.now(),drill:'Run-out',keys:['position play'],made,err:zoneErr,posOK:zoneErr==null?null:inZone}]).slice(-1500); save();
+  sndScore(made?(inZone?3:1):0); runout.plan=null; showFeedback(lines.concat(['Re-planning…'])); setTimeout(runoutPlan, 2500); }
 setInterval(runoutTick, 300);
 // ---------- keyboard ----------
 addEventListener('keydown', e=>{
