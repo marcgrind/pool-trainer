@@ -1842,7 +1842,7 @@ function barStart(){ const names=st.barNames||['Marc','Sheila'];
   barSnap(); barDraw(); }
 function barStop(){ bar=null; $('bar').style.display='none'; }
 function barSnap(){ const A=rectify(); if(!A) return; const c=barCensus(A); bar.A=A; bar.census=c; bar.cue=c.cue?{u:c.cue.u,v:c.cue.v}:null; bar.left=0; bar.stillAt=0; bar.prevA=A; }
-function barLeft(){ return bar.census ? bar.census.n : {solid:7,stripe:7,eight:1}; }
+function barLeft(){ const n=bar.census ? bar.census.n : {solid:8,stripe:7}; return {solid:Math.max(0,n.solid-1), stripe:n.stripe}; }   // the 8 shows no white, so it is counted with the solids
 function barDraw(){ if(!bar) return; const el=$('bar'), n=barLeft();
   const grp=i=>{ if(!bar.groups) return bar.broke?'open table':'—'; const g=bar.groups[i]; return `${g==='solid'?'solids':'stripes'} · ${n[g]} left${n[g]===0?' → shoot the 8':''}`; };
   el.innerHTML=`${[0,1].map(i=>`<div class="pl ${bar.turn===i&&!bar.over?'up':''}">${bar.turn===i&&!bar.over?'▶':'&nbsp;&nbsp;'}<input data-pl="${i}" value="${esc(bar.names[i])}"><span class="grp">${grp(i)}</span></div>`).join('')}
@@ -1875,7 +1875,7 @@ function barJudge(after, A){ const before=bar.census, made={solid:Math.max(0,bef
     else if(any){ bar.msg=`${nm[me]} made ${what} on the break — still ${nm[me]}, table's open`; }
     else { bar.turn=other; bar.msg=`Nothing down on the break — ${nm[other]}'s turn, table's open`; }
     return; }
-  if(made.eight){ const mine=bar.groups&&bar.groups[me], cleared=mine && after.n[mine]===0 && before.n[mine]-made[mine]<=0;
+  if(made.eight){ const mine=bar.groups&&bar.groups[me], cleared=false;
     if(cleared && !scratch){ bar.over=me; bar.msg=`${nm[me]} made the 8 — ${nm[me]} wins!`; }
     else { bar.over=other; bar.msg=`${nm[me]} ${scratch?'scratched on':'made'} the 8 early — ${nm[other]} wins`; }
     return; }
