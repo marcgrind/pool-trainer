@@ -1602,7 +1602,7 @@ function findBalls(A, diag, opt){ opt=opt||{};
         parts.forEach(pc=>{ const [pu,pv]=toTrue((pc[0]+.5)/A.gw,(pc[1]+.5)/A.gh); if(POCKETS.some(pk=>Math.hypot((pk[0]-pu)*W(),(pk[1]-pv)*H())<(st.cam.pocketRef?4:3))) return;
           out.push({u:pu,v:pv,n:Math.round(target),col:pc[2],name:hueName(pc[2]),split:true}); }); continue; } }
     if(ratio<.35||ratio>2.6||asp<.5||asp>2||fill<.4){ info.why='shape'; continue; }
-    if(POCKETS.some(pk=>Math.hypot((pk[0]-u)*W(),(pk[1]-v)*H())<(st.cam.pocketRef?4:3))){ info.why='pocket'; continue; }   // pocket openings look dark; with empty-pocket photos the jaw finder covers this area
+    if(POCKETS.some(pk=>Math.hypot((pk[0]-u)*W(),(pk[1]-v)*H())<(st.cam.pocketRef?5:3))){ info.why='pocket'; continue; }   // pocket openings look dark; with empty-pocket photos the jaw finder covers this area
     // a ball sits on clear felt: the ring around it must be mostly felt (rules out the cue, hands, chalk on the rail)
     const r0=Math.max(bw,bh)/2*1.35, r1=r0+R*P*1.1; let rn=0,rk=0;
     for(let yy=Math.floor(cyp-r1);yy<=cyp+r1;yy++) for(let xx=Math.floor(cxp-r1);xx<=cxp+r1;xx++){ const dd=(xx-cxp)**2+(yy-cyp)**2;
@@ -1658,7 +1658,9 @@ function jawBalls(found, diag){
       // same colour as the empty pocket, only darker or brighter = a shadow or the camera's exposure, not a ball
       const t1=cr+cg+cb+1, t0=rr+rg+rb+1; info.dc=+Math.hypot(cr/t1-rr/t0, cg/t1-rg/t0).toFixed(3);
       if(info.dc<.035){ info.why='jaw shade'; continue; }   // an arm reaching in is big and runs off the patch
-      if(Math.hypot((u-pu)*W(),(v-pv)*H())>4.2){ info.why='jaw far'; continue; }                     // on the open felt: the main finder's job
+      if(Math.hypot((u-pu)*W(),(v-pv)*H())>4.2){ info.why='jaw far'; continue; }
+      const past=Math.max(-u*W(), (u-1)*W(), -v*H(), (v-1)*H());   // inches beyond the cushion line, into the pocket
+      if(past>.8){ info.why='jaw down'; continue; }   // a ball that has dropped sits deeper than one hanging in the jaws                     // on the open felt: the main finder's job
       if(found.some(b=>Math.hypot((b.u-u)*W(),(b.v-v)*H())<1.8)){ info.why='jaw dup'; continue; }
       info.why='jaw ok'; out.push({u,v,n,col:[cr/n,cg/n,cb/n],name:hueName([cr/n,cg/n,cb/n]),jaw:true}); } });
   // one ball can show as two pieces (ball + its shadow on the felt): keep the bigger piece
