@@ -1568,7 +1568,8 @@ function findBalls(A, diag, opt){ opt=opt||{};
       bw=lx1-lx0+1; bh=ly1-ly0+1; ratio=nL/target; asp=bw/bh; fill=nL/(bw*bh); cxp=lx/nL; cyp=ly/nL; }
     const [u,v]=toTrue((cxp+.5)/A.gw,(cyp+.5)/A.gh), info={u:+(u*W()).toFixed(1),v:+(v*H()).toFixed(1),n,ratio:+ratio.toFixed(2),asp:+asp.toFixed(2),fill:+fill.toFixed(2),col:[cr/n,cg/n,cb/n].map(Math.round),dark};
     if(n>=8 && diag) diag.push(info);
-    if(ratio>2.2 && ratio<40 && !opt.noSplit){   // touching balls (after a break, in a cluster) merge into one blob: fit ball-sized discs inside it
+    const offEdge = x0>m+R*P && y0>m+R*P && x1<gw-m-R*P && y1<gh-m-R*P;   // a blob running along the cushion is the rail's face or shadow, not a cluster
+    if(ratio>2.2 && ratio<14 && offEdge && !opt.noSplit){   // touching balls (after a break, in a cluster) merge into one blob: fit ball-sized discs inside it
       const parts=splitBlob(q,t,mask,lab,gw,gh,A); if(parts.length){ info.why='split '+parts.length;
         parts.forEach(pc=>{ const [pu,pv]=toTrue((pc[0]+.5)/A.gw,(pc[1]+.5)/A.gh); if(POCKETS.some(pk=>Math.hypot((pk[0]-pu)*W(),(pk[1]-pv)*H())<(st.cam.pocketRef?4:3))) return;
           out.push({u:pu,v:pv,n:Math.round(target),col:pc[2],name:hueName(pc[2]),split:true}); }); continue; } }
