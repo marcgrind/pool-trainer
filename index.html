@@ -773,12 +773,21 @@ function checkPlacement(A){
 }
 var guide=null;
 function updateGuide(A){
-  guide=null; const cue=placeItems().find(it=>it.n===0); if(!cue) return;
-  const det=detect(A); if(!det) { guide={miss:true}; return; }
-  const dx=(det.u-cue.u)*W(), dy=(det.v-cue.v)*H(); guide={u:det.u,v:det.v,tu:cue.u,tv:cue.v,dist:Math.hypot(dx,dy)};
+  guide=null; const cue=placeItems().find(it=>it.n===0)||{u:-9,v:-9};
+  const det=detect(A); if(!det) guide={miss:true};
+  else { const dx=(det.u-cue.u)*W(), dy=(det.v-cue.v)*H(); guide={u:det.u,v:det.v,tu:cue.u,tv:cue.v,dist:Math.hypot(dx,dy)}; }
+  if(cue.u<-1) guide={miss:true};
+  // object balls too: the nearest real ball to each object-ball spot (within 18"), so you can see it move into place
+  const w=W(), h=H(), dist=(a,b)=>Math.hypot((a.u-b.u)*w,(a.v-b.v)*h), fb=findBalls(A).filter(b=>!det || dist(b,det)>BALL_D*.8), used=new Set();
+  guide.obs=placeItems().filter(it=>it.n!==0).map(it=>{ const c=fb.filter(b=>!used.has(b)).sort((a,b)=>dist(a,it)-dist(b,it))[0];
+    if(!c || dist(c,it)>18) return null; used.add(c); return {u:c.u,v:c.v,tu:it.u,tv:it.v,dist:dist(c,it)}; }).filter(Boolean);
 }
 function guideSVG(){
-  if(!guide || shotState!=='placing' || guide.miss || guide.dist<.3) return '';
+  if(!guide || shotState!=='placing') return '';
+  const obs=(guide.obs||[]).filter(g=>g.dist>=1).map(g=>`<line x1="${fx(g.u)}" y1="${fy(g.v)}" x2="${fx(g.tu)}" y2="${fy(g.tv)}" stroke="#4dd2ff" stroke-width=".3" marker-end="url(#arY)"/><circle cx="${fx(g.u)}" cy="${fy(g.v)}" r="${R}" fill="none" stroke="#4dd2ff" stroke-width=".3"/><text x="${fx(g.u)+R+.6}" y="${fy(g.v)-R}" font-size="1.4" font-weight="700" fill="#4dd2ff">${g.dist.toFixed(1)}" off</text>`).join('');
+  if(guide.miss || guide.dist<.3) return obs;
+  return obs + guideCue(); }
+function guideCue(){
   const x=fx(guide.u), y=fy(guide.v), tx=fx(guide.tu), ty=fy(guide.tv);
   return `<line x1="${x}" y1="${y}" x2="${tx}" y2="${ty}" stroke="#ff9f1a" stroke-width=".3" marker-end="url(#arY)"/><circle cx="${x}" cy="${y}" r="${R}" fill="none" stroke="#ff9f1a" stroke-width=".3"/>`+
     headText(Math.min(.95,Math.max(.12,guide.u+.06)), `cue ball ${guide.dist.toFixed(1)}" off`, 1.4, '#ff9f1a', 1).replace(`translate(${fx(Math.min(.95,Math.max(.12,guide.u+.06)))},${H()/2})`,`translate(${fx(Math.min(.95,Math.max(.12,guide.u+.06)))},${y})`);
@@ -840,9 +849,15 @@ function tick(){
     tick.sl=now; const A=rectify(); if(A){ const det=detect(A), away = det && Math.hypot((det.u-track.cbStart.u)*W(),(det.v-track.cbStart.v)*H())>3;
       if(away){ if(!track.leftAt) track.leftAt=now;
         if(track.prevDet && Math.hypot((det.u-track.prevDet.u)*W(),(det.v-track.prevDet.v)*H())<.6){
-          if(now-track.prevDet.t>=550){ finishWhenSettled(A, det); return; } }
+          if(now-track.prevDet.t>=550){
+            if(track.obs.some(o=>o.ref) && Math.hypot((det.u-track.cbStart.u)*W(),(det.v-track.cbStart.v)*H())<10 && obStates(A,det).every(x=>x.state==='still')){
+              recEnd(false); track=null; enterPlacing(); toast('Cue ball moved but nothing was hit — put it back in its circle'); render(); return; }
+            finishWhenSettled(A, det); return; } }
         else track.prevDet={u:det.u,v:det.v,t:now}; }
       else { track.prevDet=null; if(det) refreshSetup(A, det);
+        if(det && emptyRef && track.obs.length && placeItems().some(it=>it.n!==0 && spotChange(emptyRef,A,it.u,it.v,st.cam.tol||6)<.2 && ringChange(emptyRef,A,it.u,it.v)<.2)){
+          track.offAt=track.offAt||now; if(now-track.offAt>800){ track.offAt=0; recEnd(false); track=null; enterPlacing(); toast('A ball left its circle — put it back (it dings when it’s in)'); render(); return; } }
+        else track.offAt=0;
         if(!det && spotWhite(A,track.cbStart.u,track.cbStart.v,st.cam.tol||6)<.12){ track.goneAt=track.goneAt||now; if(now-track.goneAt>8000){ shotState='busy'; finishShotFeedback(A, null); enterPlacing(); render(); return; } }
         else track.goneAt=0; } } }
   if(motion > st.cam.mth){ stillSince=now; if(shotState==='armed'){ shotState='moving'; render(); } else if(shotState==='placing') needCheck=true; return; }
