@@ -605,7 +605,13 @@ function drawOv(){
       const col = ok===true ? '#39ff14' : ok===false ? '#00e5ff' : '#ffffff', rr=Math.max(r,6);
       ovx.setLineDash(ok===false?[6,4]:[]); ovx.lineWidth=7; ovx.strokeStyle='rgba(0,0,0,.85)'; ovx.beginPath(); ovx.arc(x*k,y*k,rr,0,7); ovx.stroke();
       ovx.lineWidth=3.5; ovx.strokeStyle=col; ovx.beginPath(); ovx.arc(x*k,y*k,rr,0,7); ovx.stroke(); ovx.setLineDash([]);
-      const lab=it.n===0?'CB':String(it.n); ovx.font='bold 16px system-ui'; ovx.lineWidth=4; ovx.strokeStyle='#000'; ovx.strokeText(lab, x*k+rr+5, y*k+5); ovx.fillStyle=col; ovx.fillText(lab, x*k+rr+5, y*k+5); ovx.font='bold 14px system-ui'; }); }
+      const lab=it.n===0?'CB':String(it.n); ovx.font='bold 16px system-ui'; ovx.lineWidth=4; ovx.strokeStyle='#000'; ovx.strokeText(lab, x*k+rr+5, y*k+5); ovx.fillStyle=col; ovx.fillText(lab, x*k+rr+5, y*k+5); ovx.font='bold 14px system-ui'; }});
+    // live placement arrows on the camera picture: from each ball to its circle, with how far it still has to go
+    if(shotState==='placing' && guide){ const arrows=[].concat(guide.miss?[]:[{...guide,c:'#ff9f1a'}], (guide.obs||[]).map(g=>({...g,c:'#4dd2ff'}))).filter(g=>g.dist>=1);
+      arrows.forEach(g=>{ const [a1,b1]=toSeen(g.u,g.v), [a2,b2]=toSeen(g.tu,g.tv), [x1,y1]=camMap(H_,a1,b1), [x2,y2]=camMap(H_,a2,b2), X1=x1*k, Y1=y1*k, X2=x2*k, Y2=y2*k, ang=Math.atan2(Y2-Y1,X2-X1);
+        ovx.lineWidth=6; ovx.strokeStyle='#000'; ovx.beginPath(); ovx.moveTo(X1,Y1); ovx.lineTo(X2,Y2); ovx.stroke(); ovx.lineWidth=3; ovx.strokeStyle=g.c; ovx.beginPath(); ovx.moveTo(X1,Y1); ovx.lineTo(X2,Y2); ovx.stroke();
+        ovx.fillStyle=g.c; ovx.beginPath(); ovx.moveTo(X2,Y2); ovx.lineTo(X2-12*Math.cos(ang-.45),Y2-12*Math.sin(ang-.45)); ovx.lineTo(X2-12*Math.cos(ang+.45),Y2-12*Math.sin(ang+.45)); ovx.fill();
+        const t=g.dist.toFixed(1)+'" off'; ovx.font='bold 15px system-ui'; ovx.lineWidth=4; ovx.strokeStyle='#000'; ovx.strokeText(t,X1+10,Y1-10); ovx.fillText(t,X1+10,Y1-10); }); } }
   if(lastDet && P.length===4 && vid.videoWidth){ const [su,sv]=toSeen(lastDet.u,lastDet.v), H_=camH(1,1); const [x,y]=camMap(H_,su,sv);
     const X=x/vid.videoWidth*ov.width, Y=y/vid.videoHeight*ov.height; ovx.lineWidth=6; ovx.strokeStyle='#000'; ovx.beginPath(); ovx.arc(X,Y,11,0,7); ovx.stroke(); ovx.lineWidth=3; ovx.strokeStyle='#ffe600'; ovx.beginPath(); ovx.arc(X,Y,11,0,7); ovx.stroke(); }
 }
