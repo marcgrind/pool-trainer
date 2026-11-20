@@ -1267,7 +1267,7 @@ function voiceCmd(t){ listenUntil=0;
   else if(/\bscore\b/.test(t)){ heardAt=performance.now(); toast('Heard: score'); capture().then(det=>{ finishShotFeedback(null, det); scoreShot(det); }); }
 }
 function again(){ result=null; if(game&&game.over){ startGame(game.type); return; } enterPlacing(); render(); speak('Set up the balls'); }
-window.__pt = { replayJudge:c=>replayJudge(c),  replaySetup:c=>replaySetup(c),  findBallsOpt:(A,d,o)=>findBalls(A,d,o),  clipList:()=>clipList(), rejudge:(c,o)=>rejudge(c,o), obStates:(A,d)=>obStates(A,d), refreshSetup:(A,d)=>refreshSetup(A,d), getTrack:()=>track, setTrack:t=>{track=t;},  savePocketRefs:()=>savePocketRefs(), jawBalls:(f,d)=>jawBalls(f,d), rectPatch:(a,b,c,d)=>rectPatch(a,b,c,d), POCKETS:()=>POCKETS, W:()=>W(), H:()=>H(), toSeen:(u,v)=>toSeen(u,v), ballLook:(A,b)=>ballLook(A,b), pickCue:(A,f)=>pickCue(A,f), get cueMark(){ return cueMark; }, setCueMark:(u,v)=>setCueMark(u,v), camToTable:(x,y)=>camToTable(x,y), rectify:s=>rectify(s), findBalls:(A,d)=>findBalls(A,d), detect:A=>detect(A), feltChroma:A=>feltChroma(A), shotOptions:A=>shotOptions(A), whiteDbg:A=>{ const o=shotOptions(A); return {cue:o.cue&&[o.cue.u*W(),o.cue.v*H(),o.cue.wf], balls:(o.balls||[]).map(b=>[+(b.u*W()).toFixed(1),+(b.v*H()).toFixed(1),+(b.wf||0).toFixed(2),b.name])}; } };
+window.__pt = { feltModel:A=>feltModel(A),  replayJudge:c=>replayJudge(c),  replaySetup:c=>replaySetup(c),  findBallsOpt:(A,d,o)=>findBalls(A,d,o),  clipList:()=>clipList(), rejudge:(c,o)=>rejudge(c,o), obStates:(A,d)=>obStates(A,d), refreshSetup:(A,d)=>refreshSetup(A,d), getTrack:()=>track, setTrack:t=>{track=t;},  savePocketRefs:()=>savePocketRefs(), jawBalls:(f,d)=>jawBalls(f,d), rectPatch:(a,b,c,d)=>rectPatch(a,b,c,d), POCKETS:()=>POCKETS, W:()=>W(), H:()=>H(), toSeen:(u,v)=>toSeen(u,v), ballLook:(A,b)=>ballLook(A,b), pickCue:(A,f)=>pickCue(A,f), get cueMark(){ return cueMark; }, setCueMark:(u,v)=>setCueMark(u,v), camToTable:(x,y)=>camToTable(x,y), rectify:s=>rectify(s), findBalls:(A,d)=>findBalls(A,d), detect:A=>detect(A), feltChroma:A=>feltChroma(A), shotOptions:A=>shotOptions(A), whiteDbg:A=>{ const o=shotOptions(A); return {cue:o.cue&&[o.cue.u*W(),o.cue.v*H(),o.cue.wf], balls:(o.balls||[]).map(b=>[+(b.u*W()).toFixed(1),+(b.v*H()).toFixed(1),+(b.wf||0).toFixed(2),b.name])}; } };
 window.__poolDebug = { get track(){ return track; }, get lastShot(){ return lastShot; }, get state(){ return shotState; } };
 
 // ---------- shot recorder: saves the webcam clip + tracking data for each shot ----------
@@ -1541,13 +1541,34 @@ function splitBlob(q,t,mask,lab,gw,gh,A){
       if(d<=r2){ const o=(y*gw+x)*3; cr+=A.px[o]; cg+=A.px[o+1]; cb+=A.px[o+2]; n++; } if(d<=D*D) used[y*gw+x]=1; }
     if(rn && rk/rn<.85) out.push([best.cx,best.cy,[cr/n,cg/n,cb/n]]); }
   return out.length>=2 || (out.length===1 && t<Math.PI*(R*P)**2*3.5) ? out : []; }
+// ---------- felt model: what the empty felt looks like at every point of this frame ----------
+// Light from the windows leaves a broad bright patch on the felt. A small local average can't follow it, so the patch
+// itself looked like a big white blob and swallowed the balls inside it. Instead fit a smooth surface (degree-4
+// polynomial per colour) to the felt, ignoring whatever stands out (balls, shadows), and compare each pixel to that.
+function solveLin(M,b){ const n=b.length; for(let i=0;i<n;i++){ let p=i; for(let r=i+1;r<n;r++) if(Math.abs(M[r][i])>Math.abs(M[p][i])) p=r; [M[i],M[p]]=[M[p],M[i]]; [b[i],b[p]]=[b[p],b[i]];
+    const d=M[i][i]||1e-9; for(let r=i+1;r<n;r++){ const f=M[r][i]/d; if(!f) continue; for(let c=i;c<n;c++) M[r][c]-=f*M[i][c]; b[r]-=f*b[i]; } }
+  const x=new Array(n).fill(0); for(let i=n-1;i>=0;i--){ let v=b[i]; for(let c=i+1;c<n;c++) v-=M[i][c]*x[c]; x[i]=v/(M[i][i]||1e-9); } return x; }
+function feltModel(A){
+  if(A.felt) return A.felt; const gw=A.gw, gh=A.gh, DEG=4, mons=[]; for(let i=0;i<=DEG;i++) for(let j=0;i+j<=DEG;j++) mons.push([i,j]);
+  const feat=(x,y)=>{ const X=2*x/gw-1, Y=2*y/gh-1; return mons.map(([i,j])=>X**i*Y**j); };
+  const S=[], mg=7; for(let y=mg;y<gh-mg;y+=3) for(let x=mg;x<gw-mg;x+=3){ const o=(y*gw+x)*3; S.push({f:feat(x,y),c:[A.px[o],A.px[o+1],A.px[o+2]],w:1}); }
+  let coef=null;
+  for(let it=0;it<4;it++){ const nF=mons.length; coef=[0,1,2].map(ch=>{ const M=Array.from({length:nF},()=>new Array(nF).fill(0)), b=new Array(nF).fill(0);
+      for(const s of S){ if(!s.w) continue; const f=s.f; for(let a=0;a<nF;a++){ b[a]+=f[a]*s.c[ch]; for(let c=a;c<nF;c++) M[a][c]+=f[a]*f[c]; } }
+      for(let a=0;a<nF;a++) for(let c=0;c<a;c++) M[a][c]=M[c][a]; return solveLin(M,b); });
+    const res=S.map(s=>{ let d=0; for(let ch=0;ch<3;ch++){ let v=0; for(let a=0;a<s.f.length;a++) v+=coef[ch][a]*s.f[a]; d+=Math.abs(v-s.c[ch]); } s.r=d; return d; });
+    const med=res.slice().sort((a,b)=>a-b)[res.length>>1]; S.forEach(s=>s.w = s.r < Math.max(3*med, 24) ? 1 : 0); }
+  const out=new Float32Array(gw*gh*3);
+  for(let y=0;y<gh;y++) for(let x=0;x<gw;x++){ const f=feat(x,y), o=(y*gw+x)*3; for(let ch=0;ch<3;ch++){ let v=0; for(let a=0;a<f.length;a++) v+=coef[ch][a]*f[a]; out[o+ch]=v; } }
+  A.felt=out; return out; }
 function findBalls(A, diag, opt){ opt=opt||{};
   // Compare each pixel with the felt around it (box blur ~3 ball widths), so glare and dim corners don't count as balls.
   const N=A.gw*A.gh, mask=new Uint8Array(N), m=Math.round(R*P*.6), gw=A.gw, gh=A.gh, rad=Math.round(R*P*3), I=[0,1,2].map(()=>new Float64Array((gw+1)*(gh+1)));
   for(let c=0;c<3;c++){ const S=I[c]; for(let y=0;y<gh;y++){ let row=0; for(let x=0;x<gw;x++){ row+=A.px[(y*gw+x)*3+c]; S[(y+1)*(gw+1)+x+1]=S[y*(gw+1)+x+1]+row; } } }
   const box=(c,x0,y0,x1,y1)=>{ const S=I[c], W1=gw+1; return S[y1*W1+x1]-S[y0*W1+x1]-S[y1*W1+x0]+S[y0*W1+x0]; };
+  const FM=feltModel(A);
   for(let y=m;y<gh-m;y++) for(let x=m;x<gw-m;x++){ const x0=Math.max(0,x-rad), x1=Math.min(gw,x+rad+1), y0=Math.max(0,y-rad), y1=Math.min(gh,y+rad+1), cnt=(x1-x0)*(y1-y0);
-    const k=y*gw+x, o=k*3, br=box(0,x0,y0,x1,y1)/cnt, bg=box(1,x0,y0,x1,y1)/cnt, bb=box(2,x0,y0,x1,y1)/cnt;
+    const k=y*gw+x, o=k*3, br=FM[o], bg=FM[o+1], bb=FM[o+2];
     const r=A.px[o],g=A.px[o+1],b=A.px[o+2], t=r+g+b+1, tb=br+bg+bb+1;
     // Different colour from the felt around it, or clearly brighter. Darker felt of the same colour is a shadow or the
     // far cushion's face (which the camera sees at an angle), not a ball — counting it merged balls into the rail.
@@ -1561,7 +1582,7 @@ function findBalls(A, diag, opt){ opt=opt||{};
     let bw=x1-x0+1, bh=y1-y0+1, ratio=n/target, asp=bw/bh, fill=n/(bw*bh), cxp=sx/n, cyp=sy/n;
     // Split the blob into pixels darker than the felt around it (the ball's shadow) and the rest (the ball itself).
     const fx0=Math.max(0,Math.round(cxp)-rad), fx1=Math.min(gw,Math.round(cxp)+rad+1), fy0=Math.max(0,Math.round(cyp)-rad), fy1=Math.min(gh,Math.round(cyp)+rad+1), fc=(fx1-fx0)*(fy1-fy0);
-    const fr=box(0,fx0,fy0,fx1,fy1)/fc, fg=box(1,fx0,fy0,fx1,fy1)/fc, fb_=box(2,fx0,fy0,fx1,fy1)/fc, fs=fr+fg+fb_;
+    const fo=(Math.round(cyp)*gw+Math.round(cxp))*3, fr=FM[fo], fg=FM[fo+1], fb_=FM[fo+2], fs=fr+fg+fb_;
     let nL=0,lx=0,ly=0,lx0=1e9,lx1=-1,ly0=1e9,ly1=-1; for(let i=0;i<t;i++){ const p=q[i]; if(A.px[p*3]+A.px[p*3+1]+A.px[p*3+2] >= fs*.82){ const px=p%gw, py=(p/gw)|0; nL++; lx+=px; ly+=py; if(px<lx0)lx0=px; if(px>lx1)lx1=px; if(py<ly0)ly0=py; if(py>ly1)ly1=py; } }
     const dark = nL < n*.3, tc=cr+cg+cb+1, feltLike=Math.hypot(cr/tc-fr/(fs+1), cg/tc-fg/(fs+1))<.1;
     if(!dark && ratio>2.6 && nL/target>=.35 && nL/target<=2.6){   // ball + its shadow merged: judge the ball part only
