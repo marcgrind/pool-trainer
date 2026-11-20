@@ -1525,6 +1525,22 @@ var advice=null, adviceOn=false;
 function hueName(c){ const [r,g,b]=c, mx=Math.max(r,g,b), mn=Math.min(r,g,b), d=mx-mn||1; let hh = mx===r ? ((g-b)/d)%6 : mx===g ? (b-r)/d+2 : (r-g)/d+4; hh*=60; if(hh<0) hh+=360;
   if(mx<70) return 'black'; if(d<35) return mx>170?'white':'grey';
   if(hh<12||hh>=340) return mx<140?'maroon':'red'; if(hh<35) return 'orange'; if(hh<70) return 'yellow'; if(hh<170) return 'green'; if(hh<255) return 'blue'; return 'purple'; }
+// Fit ball-sized discs inside a merged blob: greedy, best-filled disc first, each one ball diameter apart.
+// A disc counts only if it is almost all blob AND some of the ring around it is clear felt (rules out a solid patch of rail or shadow).
+function splitBlob(q,t,mask,lab,gw,gh,A){
+  const r=R*P*.85, r2=r*r, offs=[]; for(let dy=-Math.ceil(r);dy<=r;dy++) for(let dx=-Math.ceil(r);dx<=r;dx++) if(dx*dx+dy*dy<=r2) offs.push([dx,dy]);
+  const ro=[], a0=R*P*1.3, a1=R*P*1.75; for(let dy=-Math.ceil(a1);dy<=a1;dy++) for(let dx=-Math.ceil(a1);dx<=a1;dx++){ const d=dx*dx+dy*dy; if(d>=a0*a0&&d<=a1*a1) ro.push([dx,dy]); }
+  const used=new Uint8Array(gw*gh), pts=[]; for(let i=0;i<t;i++) pts.push(q[i]);
+  const out=[]; for(let guard=0;guard<12;guard++){ let best=null;
+    for(const p of pts){ if(used[p]) continue; const cx=p%gw, cy=(p/gw)|0; let k=0;
+      for(const [dx,dy] of offs){ const x=cx+dx, y=cy+dy; if(x>=0&&y>=0&&x<gw&&y<gh&&mask[y*gw+x]&&!used[y*gw+x]) k++; }
+      const f=k/offs.length; if(f>=.8 && (!best||f>best.f)) best={cx,cy,f}; }
+    if(!best) break; let rn=0,rk=0; for(const [dx,dy] of ro){ const x=best.cx+dx, y=best.cy+dy; if(x<0||y<0||x>=gw||y>=gh) continue; rn++; if(mask[y*gw+x]) rk++; }
+    const D=R*P*1.8; let cr=0,cg=0,cb=0,n=0;
+    for(let y=Math.floor(best.cy-D);y<=best.cy+D;y++) for(let x=Math.floor(best.cx-D);x<=best.cx+D;x++){ if(x<0||y<0||x>=gw||y>=gh) continue; const d=(x-best.cx)**2+(y-best.cy)**2;
+      if(d<=r2){ const o=(y*gw+x)*3; cr+=A.px[o]; cg+=A.px[o+1]; cb+=A.px[o+2]; n++; } if(d<=D*D) used[y*gw+x]=1; }
+    if(rn && rk/rn<.85) out.push([best.cx,best.cy,[cr/n,cg/n,cb/n]]); }
+  return out.length>=2 || (out.length===1 && t<Math.PI*(R*P)**2*3.5) ? out : []; }
 function findBalls(A, diag, opt){ opt=opt||{};
   // Compare each pixel with the felt around it (box blur ~3 ball widths), so glare and dim corners don't count as balls.
   const N=A.gw*A.gh, mask=new Uint8Array(N), m=Math.round(R*P*.6), gw=A.gw, gh=A.gh, rad=Math.round(R*P*3), I=[0,1,2].map(()=>new Float64Array((gw+1)*(gh+1)));
@@ -1552,6 +1568,10 @@ function findBalls(A, diag, opt){ opt=opt||{};
       bw=lx1-lx0+1; bh=ly1-ly0+1; ratio=nL/target; asp=bw/bh; fill=nL/(bw*bh); cxp=lx/nL; cyp=ly/nL; }
     const [u,v]=toTrue((cxp+.5)/A.gw,(cyp+.5)/A.gh), info={u:+(u*W()).toFixed(1),v:+(v*H()).toFixed(1),n,ratio:+ratio.toFixed(2),asp:+asp.toFixed(2),fill:+fill.toFixed(2),col:[cr/n,cg/n,cb/n].map(Math.round),dark};
     if(n>=8 && diag) diag.push(info);
+    if(ratio>2.2 && ratio<40 && !opt.noSplit){   // touching balls (after a break, in a cluster) merge into one blob: fit ball-sized discs inside it
+      const parts=splitBlob(q,t,mask,lab,gw,gh,A); if(parts.length){ info.why='split '+parts.length;
+        parts.forEach(pc=>{ const [pu,pv]=toTrue((pc[0]+.5)/A.gw,(pc[1]+.5)/A.gh); if(POCKETS.some(pk=>Math.hypot((pk[0]-pu)*W(),(pk[1]-pv)*H())<(st.cam.pocketRef?4:3))) return;
+          out.push({u:pu,v:pv,n:Math.round(target),col:pc[2],name:hueName(pc[2]),split:true}); }); continue; } }
     if(ratio<.35||ratio>2.6||asp<.5||asp>2||fill<.4){ info.why='shape'; continue; }
     if(POCKETS.some(pk=>Math.hypot((pk[0]-u)*W(),(pk[1]-v)*H())<(st.cam.pocketRef?4:3))){ info.why='pocket'; continue; }   // pocket openings look dark; with empty-pocket photos the jaw finder covers this area
     // a ball sits on clear felt: the ring around it must be mostly felt (rules out the cue, hands, chalk on the rail)
