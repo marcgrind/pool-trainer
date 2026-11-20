@@ -1267,7 +1267,7 @@ function voiceCmd(t){ listenUntil=0;
   else if(/\bscore\b/.test(t)){ heardAt=performance.now(); toast('Heard: score'); capture().then(det=>{ finishShotFeedback(null, det); scoreShot(det); }); }
 }
 function again(){ result=null; if(game&&game.over){ startGame(game.type); return; } enterPlacing(); render(); speak('Set up the balls'); }
-window.__pt = { replaySetup:c=>replaySetup(c),  findBallsOpt:(A,d,o)=>findBalls(A,d,o),  clipList:()=>clipList(), rejudge:(c,o)=>rejudge(c,o), obStates:(A,d)=>obStates(A,d), refreshSetup:(A,d)=>refreshSetup(A,d), getTrack:()=>track, setTrack:t=>{track=t;},  savePocketRefs:()=>savePocketRefs(), jawBalls:(f,d)=>jawBalls(f,d), rectPatch:(a,b,c,d)=>rectPatch(a,b,c,d), POCKETS:()=>POCKETS, W:()=>W(), H:()=>H(), toSeen:(u,v)=>toSeen(u,v), ballLook:(A,b)=>ballLook(A,b), pickCue:(A,f)=>pickCue(A,f), get cueMark(){ return cueMark; }, setCueMark:(u,v)=>setCueMark(u,v), camToTable:(x,y)=>camToTable(x,y), rectify:s=>rectify(s), findBalls:(A,d)=>findBalls(A,d), detect:A=>detect(A), feltChroma:A=>feltChroma(A), shotOptions:A=>shotOptions(A), whiteDbg:A=>{ const o=shotOptions(A); return {cue:o.cue&&[o.cue.u*W(),o.cue.v*H(),o.cue.wf], balls:(o.balls||[]).map(b=>[+(b.u*W()).toFixed(1),+(b.v*H()).toFixed(1),+(b.wf||0).toFixed(2),b.name])}; } };
+window.__pt = { replayJudge:c=>replayJudge(c),  replaySetup:c=>replaySetup(c),  findBallsOpt:(A,d,o)=>findBalls(A,d,o),  clipList:()=>clipList(), rejudge:(c,o)=>rejudge(c,o), obStates:(A,d)=>obStates(A,d), refreshSetup:(A,d)=>refreshSetup(A,d), getTrack:()=>track, setTrack:t=>{track=t;},  savePocketRefs:()=>savePocketRefs(), jawBalls:(f,d)=>jawBalls(f,d), rectPatch:(a,b,c,d)=>rectPatch(a,b,c,d), POCKETS:()=>POCKETS, W:()=>W(), H:()=>H(), toSeen:(u,v)=>toSeen(u,v), ballLook:(A,b)=>ballLook(A,b), pickCue:(A,f)=>pickCue(A,f), get cueMark(){ return cueMark; }, setCueMark:(u,v)=>setCueMark(u,v), camToTable:(x,y)=>camToTable(x,y), rectify:s=>rectify(s), findBalls:(A,d)=>findBalls(A,d), detect:A=>detect(A), feltChroma:A=>feltChroma(A), shotOptions:A=>shotOptions(A), whiteDbg:A=>{ const o=shotOptions(A); return {cue:o.cue&&[o.cue.u*W(),o.cue.v*H(),o.cue.wf], balls:(o.balls||[]).map(b=>[+(b.u*W()).toFixed(1),+(b.v*H()).toFixed(1),+(b.wf||0).toFixed(2),b.name])}; } };
 window.__poolDebug = { get track(){ return track; }, get lastShot(){ return lastShot; }, get state(){ return shotState; } };
 
 // ---------- shot recorder: saves the webcam clip + tracking data for each shot ----------
@@ -1290,11 +1290,15 @@ async function clipSave(rec){ try{ const db=await clipDB(); const tx=db.transact
   const keys=await new Promise(r=>{ const q=os.getAllKeys(); q.onsuccess=()=>r(q.result); }); keys.sort().slice(0,Math.max(0,keys.length-40)).forEach(k=>os.delete(k)); }catch(e){} }
 async function clipList(){ const db=await clipDB(); return new Promise(r=>{ const q=db.transaction('shots').objectStore('shots').getAll(); q.onsuccess=()=>r(q.result); }); }
 // Re-run the made / not-made judgement on the exact frames a recorded shot was judged on.
+// Re-judge a clip end to end: rebuild the setup frame from its video, then judge the frame the live code judged.
+async function replayJudge(c){ const rs=await replaySetup(c); if(!rs||!rs.A) return {err:'no setup frame', frames:rs&&rs.frames}; const keep=track;
+  try{ track={cbStart:c.judge.cbStart, obs:c.judge.obs.map((o,i)=>({n:o.n,start:o.start,pts:[],ref:rs.refs[i]})), setupBalls:rs.balls, setupA:rs.A}; learnColors(rs.A);
+    const a=stillAnalysis(c.judge.final, c.judge.det, c.judge.items); return {made:a.made, line:a.lines[0], setupT:rs.t}; } finally { track=keep; } }
 function rejudge(c, opts){ const J=c.judge; if(!J) return null; const keep=track;
   try{ track={cbStart:J.cbStart, obs:J.obs.map(o=>({n:o.n,start:o.start,pts:[]}))}; learnColors(J.setup);
     if(opts&&opts.refresh){ track.setupAt=0; refreshSetup(J.setup, opts.setupDet||J.cbStart); } else { track.obs.forEach((o,i)=>{ if(J.obs[i].ref) o.ref=J.obs[i].ref; }); track.setupBalls=J.setupBalls; } const a=stillAnalysis(J.final, J.det, J.items); return a; } finally { track=keep; } }
 async function replaySetup(c){ const J=c.judge; if(!J||!c.video) return null; const v=document.createElement('video'); v.muted=true; v.playsInline=true; v.src=URL.createObjectURL(c.video);
-  await new Promise(r=>{ v.onloadeddata=r; v.load(); }); await v.play().catch(()=>{}); const keep=track; let best=null, frames=0;
+  await new Promise(r=>{ v.onloadeddata=r; v.load(); }); v.playbackRate=3; await v.play().catch(()=>{}); const keep=track; let best=null, frames=0;
   try{ track={cbStart:J.cbStart, obs:J.obs.map(o=>({n:o.n,start:o.start,pts:[]}))};
     while(!v.ended && v.currentTime<40){ await new Promise(r=>setTimeout(r,150)); const A=rectify(v); if(!A) continue; frames++; const d=detect(A);
       if(d && Math.hypot((d.u-J.cbStart.u)*W(),(d.v-J.cbStart.v)*H())<1.5){ track.setupAt=0; refreshSetup(A,d); if(track.setupA===A) best={A, refs:track.obs.map(o=>o.ref), balls:track.setupBalls, t:v.currentTime}; }
