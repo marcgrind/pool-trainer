@@ -1606,7 +1606,13 @@ function findBalls(A, diag, opt){ opt=opt||{};
     const r0=Math.max(bw,bh)/2*1.35, r1=r0+R*P*1.1; let rn=0,rk=0;
     for(let yy=Math.floor(cyp-r1);yy<=cyp+r1;yy++) for(let xx=Math.floor(cxp-r1);xx<=cxp+r1;xx++){ const dd=(xx-cxp)**2+(yy-cyp)**2;
       if(xx<m+3||yy<m+3||xx>=A.gw-m-3||yy>=A.gh-m-3||dd>r1*r1||dd<r0*r0) continue; rn++; if(mask[yy*A.gw+xx]) rk++; }   // skip the cushion edge
-    if(rn && rk/rn>.22){ info.why='ring '+(rk/rn).toFixed(2); continue; } info.why='ok';
+    if(rn && rk/rn>.22){ info.why='ring '+(rk/rn).toFixed(2); continue; }
+    // felt-coloured and no shiny highlight = a patch of window light on the felt, not a ball (a red ball on red felt
+    // matches the felt colour too, but always shows a bright highlight)
+    { const fo2=(Math.round(cyp)*gw+Math.round(cxp))*3, ft=FM[fo2]+FM[fo2+1]+FM[fo2+2]+1, ct=cr+cg+cb+n, dcf=Math.hypot(cr/ct-FM[fo2]/ft, cg/ct-FM[fo2+1]/ft);
+      let mxs=0; const hr=R*P*.9; for(let yy=Math.floor(cyp-hr);yy<=cyp+hr;yy++) for(let xx=Math.floor(cxp-hr);xx<=cxp+hr;xx++){ if(xx<0||yy<0||xx>=gw||yy>=gh) continue; const qq=(yy*gw+xx)*3, sm=A.px[qq]+A.px[qq+1]+A.px[qq+2]; if(sm>mxs) mxs=sm; }
+      info.dcf=+dcf.toFixed(3); info.hi=mxs; if(dcf<.09 && mxs<540){ info.why='glare'; continue; } }
+    info.why='ok';
     out.push({u,v,n,col:[cr/n,cg/n,cb/n],name:hueName([cr/n,cg/n,cb/n]),shade:dark&&feltLike,info}); }
   // a dark, felt-coloured blob right next to a ball is that ball's shadow
   for(let i=out.length-1;i>=0;i--){ const b=out[i]; if(b.shade && out.some(c=>c!==b && !c.shade && Math.hypot((c.u-b.u)*W(),(c.v-b.v)*H())<3.8)){ b.info.why='shadow'; out.splice(i,1); } }
