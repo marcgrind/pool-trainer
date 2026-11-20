@@ -39,7 +39,9 @@ table.pt{border-collapse:collapse;width:100%;margin:8px 0}table.pt td,table.pt t
 #vid{width:100%;display:block;border-radius:6px;background:#111;min-height:60px}
 #ghost{position:absolute;left:0;top:0;width:100%;height:100%;opacity:.45;display:none;pointer-events:none;mix-blend-mode:screen}
 #alignMsg{position:absolute;left:0;right:0;top:8px;text-align:center;font:700 20px system-ui;color:#ffd400;text-shadow:0 0 6px #000;pointer-events:none;line-height:1.3}
-#camWrap.flip #vid,#camWrap.flip #ghost{transform:rotate(180deg)}
+#camWrap.v1 #vid,#camWrap.v1 #ghost{transform:scale(-1,-1)}
+#camWrap.v2 #vid,#camWrap.v2 #ghost{transform:scaleX(-1)}
+#camWrap.v3 #vid,#camWrap.v3 #ghost{transform:scaleY(-1)}
 #ov{position:absolute;left:0;top:0;width:100%;height:100%;cursor:crosshair}
 #maskc{width:100%;max-height:18vh;object-fit:contain;image-rendering:pixelated;border-radius:6px;margin-top:6px;background:#111}
 #meter{display:inline-block;width:80px;height:8px;background:#333;border-radius:4px;overflow:hidden;vertical-align:middle}
@@ -344,7 +346,7 @@ function buildPanel(){
     <div class="tip">Projector at one end of the table? Press End-mount preset, then drag the four circles until the cyan rectangle sits exactly on the cushion noses — "FOOT · projector end" must land at the projector end (use Swap ends if it's backwards). Every drill and game is laid out so you shoot from the head end toward the projector. Fine-tune with arrow keys (<kbd>1</kbd>–<kbd>4</kbd> or <kbd>Tab</kbd> picks the corner, <kbd>Shift</kbd> = 10 px). Check that the yellow spots land on the table's head, center and foot spots and the grid lines hit the diamonds.</div>`;
   }
   if (mode==='cam'){
-    h+=`<div class="row"><button class="${camState==='on'?'on':''}" data-act="camStart">${camState==='on'?'Camera on':'Start camera'}</button><button class="${st.camFlip?'on':''}" data-act="camFlip">Flip camera 180°</button>
+    h+=`<div class="row"><button class="${camState==='on'?'on':''}" data-act="camStart">${camState==='on'?'Camera on':'Start camera'}</button><button class="${st.camView?'on':''}" data-act="camFlip">Camera view: ${['normal','turned 180°','mirrored left↔right','mirrored top↕bottom'][st.camView||0]}</button>
       ${camDevs.length>1?`<select data-act="camDev">${camDevs.map((c,i)=>`<option value="${c.deviceId}" ${c.deviceId===st.cam.dev?'selected':''}>${esc(c.label||'Camera '+(i+1))}</option>`).join('')}</select>`:''}
       <button class="${camPick>=0&&camPick<4?'on':''}" data-act="camCorners">${camPick>=0&&camPick<4?'Click corner '+(camPick+1)+' in the video':'Set camera corners'}</button>
       <button class="${camPick>=4?'on':''}" data-act="camLens">${camPick>=4?'Click side pocket S'+(camPick-3)+' in the video':'Fix lens bend'}</button>
@@ -422,7 +424,7 @@ panel.addEventListener('click', e=>{
     case 'usbFlip': st.usbFlip=!st.usbFlip; break;
     case 'usbExport': exportUSB(); return;
     case 'camStart': startCam(); return;
-    case 'camFlip': st.camFlip=!st.camFlip; save(); buildPanel(); drawOv(); return;
+    case 'camFlip': st.camView=((st.camView||0)+1)%4; save(); buildPanel(); drawOv(); return;
     case 'camLens': if(!st.cam.pts||st.cam.pts.length<4){ toast('Set the camera corners first'); return; } camPick=4; st.cam.side=[]; st.cam.k=0; buildPanel(); drawOv(); toast('Click the cushion point at the middle of each side pocket: S1 on the 1–2 side, then S2 on the 3–4 side'); return;
     case 'camCorners': camPick=0; st.cam.pts=[]; st.cam.ft=[]; st.cam.lin=null; /* fine-tune belongs to the old position */ buildPanel(); drawOv(); return;
     case 'camTest': capture().then(det=>{ result = det ? {u:det.u,v:det.v,label:'Detected'} : null; if(!det) toast('Cue ball not found — adjust White ≥ / Max tint'); render(); }); return;
@@ -472,7 +474,7 @@ panel.addEventListener('input', e=>{
 });
 
 // ---------- library modal ----------
-const SETTING_KEYS=['size','screenView','cam','camFlip','best','sound','speak','endMount','corners','outline','title'];
+const SETTING_KEYS=['size','screenView','cam','camView','best','sound','speak','endMount','corners','outline','title'];
 function openLib(){ const settings={}; SETTING_KEYS.forEach(k=>{ if(st[k]!==undefined) settings[k]=st[k]; }); $('json').value=JSON.stringify({drills:st.drills, settings},null,1); $('modal').style.display='flex'; }
 function parseLib(){ try { const j=JSON.parse($('json').value); const arr=Array.isArray(j)?j:j.drills; if(!Array.isArray(arr)) throw 0; return arr.filter(x=>x&&Array.isArray(x.items)); } catch(e){ toast('That is not a valid drill library'); return null; } }
 $('modal').addEventListener('click', e=>{
@@ -534,8 +536,10 @@ addEventListener('pointerup', ()=>{ if(!drag) return;
 // ---------- camera: calibration, cue-ball detection, shot scoring ----------
 var camState='off', camDevs=[], camPick=-1, result=null, shotState='armed', stillSince=0, capturing=false, lastRender=0, lastDet=null;
 let stream=null, prevSmall=null, loopTimer=null;
+// Camera view: 0 normal, 1 turned 180°, 2 mirrored left↔right, 3 mirrored top↕bottom → sign of each screen axis
+const camAxes = () => [[1,1],[-1,-1],[-1,1],[1,-1]][st.camView||0];
 const vid=$('vid'), ov=$('ov'), ovx=(()=>{ const c=ov.getContext('2d');
-  ['fillText','strokeText'].forEach(fn=>{ const orig=c[fn].bind(c); c[fn]=(t,x,y,...m)=>{ if(!st.camFlip) return orig(t,x,y,...m); c.save(); c.translate(x,y); c.rotate(Math.PI); const ta=c.textAlign; c.textAlign = ta==='center'?'center':(ta==='right'||ta==='end')?'left':'right'; orig(t,0,0,...m); c.restore(); }; }); return c; })(), maskc=$('maskc'), mx=maskc.getContext('2d');
+  ['fillText','strokeText'].forEach(fn=>{ const orig=c[fn].bind(c); c[fn]=(t,x,y,...m)=>{ const [ax,ay]=camAxes(); if(ax>0&&ay>0) return orig(t,x,y,...m); c.save(); c.translate(x,y); c.scale(ax,ay); const ta=c.textAlign; if(ax<0) c.textAlign = ta==='center'?'center':(ta==='right'||ta==='end')?'left':'right'; orig(t,0,0,...m); c.restore(); }; }); return c; })(), maskc=$('maskc'), mx=maskc.getContext('2d');
 const cvs=document.createElement('canvas'), cctx=cvs.getContext('2d',{willReadFrequently:true});
 const sm=document.createElement('canvas'); sm.width=192; sm.height=108; const smx=sm.getContext('2d',{willReadFrequently:true});
 
@@ -574,7 +578,7 @@ function fitLens(){
 function drawOv(){
   const r=vid.getBoundingClientRect(); ov.width=r.width; ov.height=r.height; ovx.clearRect(0,0,ov.width,ov.height);
   // Flip camera 180°: the picture is turned with CSS; overlay drawings use the same turn, but labels stay upright
-  $('camWrap').classList.toggle('flip', !!st.camFlip); if(st.camFlip) ovx.setTransform(-1,0,0,-1,ov.width,ov.height);
+  const [ax,ay]=camAxes(); $('camWrap').className='v'+(st.camView||0); if(ax<0||ay<0) ovx.setTransform(ax,0,0,ay,ax<0?ov.width:0,ay<0?ov.height:0);
   const P=st.cam.pts||[]; ovx.lineWidth=2; ovx.strokeStyle='#0ff'; ovx.fillStyle='#0ff'; ovx.font='bold 14px system-ui';
   if(P.length===4 && vid.videoWidth){ const M=camH(1,1), k=ov.width/vid.videoWidth; ovx.beginPath(); let first=true;
       [[0,0],[1,0],[1,1],[0,1],[0,0]].reduce((a,b)=>{ for(let t=0;t<=1.0001;t+=.05){ const [x,y]=camMap(M,a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t); first?ovx.moveTo(x*k,y*k):ovx.lineTo(x*k,y*k); first=false; } return b; });
@@ -597,7 +601,7 @@ function drawOv(){
     const X=x/vid.videoWidth*ov.width, Y=y/vid.videoHeight*ov.height; ovx.lineWidth=6; ovx.strokeStyle='#000'; ovx.beginPath(); ovx.arc(X,Y,11,0,7); ovx.stroke(); ovx.lineWidth=3; ovx.strokeStyle='#ffe600'; ovx.beginPath(); ovx.arc(X,Y,11,0,7); ovx.stroke(); }
 }
 ov.addEventListener('click', e=>{
-  const r=ov.getBoundingClientRect(); let pt=[(e.clientX-r.left)/r.width,(e.clientY-r.top)/r.height]; if(st.camFlip) pt=[1-pt[0],1-pt[1]];
+  const r=ov.getBoundingClientRect(); let pt=[(e.clientX-r.left)/r.width,(e.clientY-r.top)/r.height]; { const [ax,ay]=camAxes(); if(ax<0) pt[0]=1-pt[0]; if(ay<0) pt[1]=1-pt[1]; }
   if(camPick<0){ if(mode==='play' && adviceOn && st.cam.pts && st.cam.pts.length===4){ const [u,v]=camToTable(pt[0],pt[1]); if(u>-.02&&u<1.02&&v>-.04&&v<1.04) setCueMark(u,v); } return; }
   if(camPick>=4){ st.cam.side=st.cam.side||[]; st.cam.side[camPick-4]=pt; camPick = camPick<5 ? camPick+1 : -1; if(camPick<0) fitLens(); save(); buildPanel(); drawOv(); return; }
   st.cam.pts[camPick]=pt;
