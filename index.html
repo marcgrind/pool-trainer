@@ -1696,8 +1696,18 @@ function cueFromMark(A, found){
   if(sc>.35 && rc<.2){ cueMark=null; return null; }        // the spot is clear felt now: the cue ball moved
   return {u:cueMark.u, v:cueMark.v, col:[235,235,235], name:'white', marked:true, auto:!!cueMark.auto}; }   // covered or missed by the finder: trust the tap
 function camToTable(nx,ny){ const inv=homog(st.cam.pts.map(p=>lensU(p[0],p[1])),[[0,0],[1,0],[1,1],[0,1]]), [ux,uy]=lensU(nx,ny), [u,v]=apply(inv,ux,uy); return toTrue(u,v); }
+// Balls flicker in and out of a single frame (a dark ball in a shadow, a stripe turned the wrong way). For planning,
+// keep the last few frames while the table is still and use every ball seen in at least half of them.
+var ballHist=[];
+function stableBalls(A){ const w=W(), h=H(), now=findBalls(A), last=ballHist[ballHist.length-1];
+  if(last && frameDiff(last.A,A)>.01) ballHist=[]; ballHist.push({A,b:now,t:performance.now()}); if(ballHist.length>6) ballHist.shift();
+  if(ballHist.length<3) return now;
+  const groups=[]; ballHist.forEach((H_,fi)=>H_.b.forEach(b=>{ const g=groups.find(g=>Math.hypot((g.u-b.u)*w,(g.v-b.v)*h)<1.3 && !g.frames.has(fi));
+    if(g){ g.list.push(b); g.frames.add(fi); g.u=g.list.reduce((a,x)=>a+x.u,0)/g.list.length; g.v=g.list.reduce((a,x)=>a+x.v,0)/g.list.length; } else groups.push({u:b.u,v:b.v,list:[b],frames:new Set([fi])}); }));
+  return groups.filter(g=>g.frames.size>=Math.ceil(ballHist.length/2)).map(g=>{ const r=g.list[g.list.length-1]; return {...r, u:g.u, v:g.v}; }); }
+setInterval(()=>{ if(mode==='play' && camState==='on' && adviceOn && !capturing){ const A=rectify(); if(A) stableBalls(A); } }, 350);
 function shotOptions(A){
-  const w=W(), h=H(), found=findBalls(A);
+  const w=W(), h=H(), found=stableBalls(A);
   const cue = cueFromMark(A, found) || pickCue(A, found) || detect(A); if(!cue) return {err:'Couldn’t find the cue ball'};
   const balls=found.filter(b=>b!==cue && Math.hypot((b.u-cue.u)*w,(b.v-cue.v)*h)>BALL_D*.8);
   const all=balls.concat([cue]), cb=[cue.u*w,cue.v*h], opts=[];
