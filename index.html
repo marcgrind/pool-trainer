@@ -1301,8 +1301,8 @@ async function replaySetup(c){ const J=c.judge; if(!J||!c.video) return null; co
   await new Promise(r=>{ v.onloadeddata=r; v.load(); }); v.playbackRate=3; await v.play().catch(()=>{}); const keep=track; let best=null, frames=0;
   try{ track={cbStart:J.cbStart, obs:J.obs.map(o=>({n:o.n,start:o.start,pts:[]}))};
     while(!v.ended && v.currentTime<40){ await new Promise(r=>setTimeout(r,150)); const A=rectify(v); if(!A) continue; frames++; const d=detect(A);
-      if(d && Math.hypot((d.u-J.cbStart.u)*W(),(d.v-J.cbStart.v)*H())<1.5){ track.setupAt=0; refreshSetup(A,d); if(track.setupA===A) best={A, refs:track.obs.map(o=>o.ref), balls:track.setupBalls, t:v.currentTime}; }
-      else if(d && best && Math.hypot((d.u-J.cbStart.u)*W(),(d.v-J.cbStart.v)*H())>3) break; } }
+      if(d && Math.hypot((d.u-J.cbStart.u)*W(),(d.v-J.cbStart.v)*H())<3){ track.setupAt=0; refreshSetup(A,d); if(track.setupA===A) best={A, refs:track.obs.map(o=>o.ref), balls:track.setupBalls, t:v.currentTime}; }
+      else if(d && best && Math.hypot((d.u-J.cbStart.u)*W(),(d.v-J.cbStart.v)*H())>4) break; } }
   finally{ track=keep; v.pause(); URL.revokeObjectURL(v.src); }
   return best?{...best,frames}:{frames}; }
 function dl(blob,name){ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),20000); }
@@ -1464,7 +1464,7 @@ function learnColors(A0){ const A=A0||rectify(); if(!A||!track) return; const F=
 // from the ball finder's own blob (it compares against the felt right around it), refreshed until the cue ball moves.
 function refreshSetup(A, det){
   if(!track || !track.obs.length || !A) return; const now=performance.now(); if(now-(track.setupAt||0)<900) return; track.setupAt=now;
-  const w=W(), h=H(), dist=(a,b)=>Math.hypot((a.u-b.u)*w,(a.v-b.v)*h); if(!det || !track.cbStart || dist(det,track.cbStart)>1.5) return;
+  const w=W(), h=H(), dist=(a,b)=>Math.hypot((a.u-b.u)*w,(a.v-b.v)*h); if(!det || !track.cbStart || dist(det,track.cbStart)>3) return;   // same 3" rule the shot watcher uses
   const fb=findBalls(A).filter(b=>dist(b,det)>BALL_D*.8), refs=track.obs.map(o=>fb.filter(b=>dist(b,o.start)<(track.obs.length===1?6:2.5)).sort((a,b)=>dist(a,o.start)-dist(b,o.start))[0]);
   if(refs.some(r=>!r)) return;
   track.obs.forEach((o,i)=>{ o.ref={u:refs[i].u,v:refs[i].v,col:refs[i].col}; }); track.setupBalls=fb.map(b=>({u:b.u,v:b.v})); track.setupA=A; learnColors(A); }
