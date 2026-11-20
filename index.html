@@ -1292,10 +1292,10 @@ async function clipList(){ const db=await clipDB(); return new Promise(r=>{ cons
 // Re-run the made / not-made judgement on the exact frames a recorded shot was judged on.
 // Re-judge a clip end to end: rebuild the setup frame from its video, then judge the frame the live code judged.
 async function replayJudge(c){ const rs=await replaySetup(c); if(!rs||!rs.A) return {err:'no setup frame', frames:rs&&rs.frames}; const keep=track;
-  try{ track={cbStart:c.judge.cbStart, obs:c.judge.obs.map((o,i)=>({n:o.n,start:o.start,pts:[],ref:rs.refs[i]})), setupBalls:rs.balls, setupA:rs.A}; learnColors(rs.A);
+  try{ track={replay:true, cbStart:c.judge.cbStart, obs:c.judge.obs.map((o,i)=>({n:o.n,start:o.start,pts:[],ref:rs.refs[i]})), setupBalls:rs.balls, setupA:rs.A}; learnColors(rs.A);
     const a=stillAnalysis(c.judge.final, c.judge.det, c.judge.items); return {made:a.made, line:a.lines[0], setupT:rs.t}; } finally { track=keep; } }
 function rejudge(c, opts){ const J=c.judge; if(!J) return null; const keep=track;
-  try{ track={cbStart:J.cbStart, obs:J.obs.map(o=>({n:o.n,start:o.start,pts:[]}))}; learnColors(J.setup);
+  try{ track={replay:true, cbStart:J.cbStart, obs:J.obs.map(o=>({n:o.n,start:o.start,pts:[]}))}; learnColors(J.setup);
     if(opts&&opts.refresh){ track.setupAt=0; refreshSetup(J.setup, opts.setupDet||J.cbStart); } else { track.obs.forEach((o,i)=>{ if(J.obs[i].ref) o.ref=J.obs[i].ref; }); track.setupBalls=J.setupBalls; } const a=stillAnalysis(J.final, J.det, J.items); return a; } finally { track=keep; } }
 async function replaySetup(c){ const J=c.judge; if(!J||!c.video) return null; const v=document.createElement('video'); v.muted=true; v.playsInline=true; v.src=URL.createObjectURL(c.video);
   await new Promise(r=>{ v.onloadeddata=r; v.load(); }); v.playbackRate=3; await v.play().catch(()=>{}); const keep=track; let best=null, frames=0;
@@ -1473,10 +1473,11 @@ function colClose(a,b){ const ta=a[0]+a[1]+a[2]+1, tb=b[0]+b[1]+b[2]+1; return M
 // Only real balls count: round, ball-sized, sitting on clear felt (the finder's checks), not touching the edge where you lean in.
 function obStates(A, det){
   const w=W(), h=H(), dist=(a,b)=>Math.hypot((a.u-b.u)*w,(a.v-b.v)*h), edge=b=>Math.min(b.u*w,(1-b.u)*w,b.v*h,(1-b.v)*h);
-  const fb=findBalls(A).filter(b=>!det || dist(b,det)>BALL_D*.8), others=(track.setupBalls||[]).filter(p=>!track.obs.some(o=>o.ref&&dist(o.ref,p)<1));
+  const fb=findBalls(A,null,{noJaw:!!(track&&track.replay)}).filter(b=>!det || dist(b,det)>BALL_D*.8), others=(track.setupBalls||[]).filter(p=>!track.obs.some(o=>o.ref&&dist(o.ref,p)<1));
+  const useCol = track.obs.length>1;   // with one object ball, any real ball that isn't the cue ball is it (a lit-up red ball can look orange)
   return track.obs.map(o=>{ const start=o.ref||o.start;
-    const still=fb.find(b=>dist(b,start)<1.5 && (!o.ref || colClose(b.col,o.ref.col))); if(still) return {o,state:'still',at:still};
-    const c=fb.filter(b=>!others.some(p=>dist(p,b)<1.5) && (!o.ref || colClose(b.col,o.ref.col)) && (b.jaw || !(edge(b)<R+1 && b.n>Math.PI*(R*P)**2*1.6)));
+    const still=fb.find(b=>dist(b,start)<1.5 && (!useCol || !o.ref || colClose(b.col,o.ref.col))); if(still) return {o,state:'still',at:still};
+    const c=fb.filter(b=>!others.some(p=>dist(p,b)<1.5) && (!useCol || !o.ref || colClose(b.col,o.ref.col)) && (b.jaw || !(edge(b)<R+1 && b.n>Math.PI*(R*P)**2*1.6)));
     if(c.length){ const at=c.sort((a,b)=>dist(a,start)-dist(b,start))[0]; return {o,state:'moved',at}; }
     return {o,state:'made'}; }); }
 function obKey(A){ if(track && track.obs.some(o=>o.ref)) return obStates(A, detect(A)).map(s=>s.state==='moved'?`${s.at.u.toFixed(3)},${s.at.v.toFixed(3)}`:s.state); return (track?track.obs:[]).map(o=>{ if(!o.col2) return 'x'; const f=findColBall(A,o.col2); return f?`${f.u.toFixed(3)},${f.v.toFixed(3)}`:'gone'; }); }
@@ -1564,7 +1565,7 @@ function findBalls(A, diag, opt){ opt=opt||{};
   out.forEach(b=>{ delete b.info; });
   // a ball's highlight can split it in two: keep the bigger piece
   out.sort((a,b)=>b.n-a.n); const uniq=out.filter((b,i)=>!out.slice(0,i).some(c=>Math.hypot((c.u-b.u)*W(),(c.v-b.v)*H())<BALL_D*.9));
-  return uniq.concat(jawBalls(uniq, diag)); }
+  return opt.noJaw ? uniq : uniq.concat(jawBalls(uniq, diag)); }
 // ---------- balls sitting in the pocket jaws ----------
 // Over the dark pocket a ball doesn't stand out from "the felt around it", so each pocket is compared with a picture
 // of the same pocket taken empty (saved by "Capture empty table"). Anything ball-sized and round that wasn't there is a ball.
@@ -1587,6 +1588,8 @@ function jawBalls(found, diag){
     for(let y=1;y<gh-1;y++) for(let x=1;x<gw-1;x++){ const o=(y*gw+x)*3; let best=1e9;   // allow a 1 px shift (camera auto-adjust)
       for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){ const q=o+(dy*gw+dx)*3; const d=Math.abs(Pt.px[o]-ref[q])+Math.abs(Pt.px[o+1]-ref[q+1])+Math.abs(Pt.px[o+2]-ref[q+2]); if(d<best) best=d; }
       if(best>80) mask[y*gw+x]=1; }
+    let changed=0; for(let k=0;k<gw*gh;k++) changed+=mask[k];
+    if(changed>target*3.2){ if(diag) diag.push({jaw:i,n:changed,why:'jaw busy'}); return; }   // much more changed than one ball: a hand or arm is over this pocket
     const lab=new Uint8Array(gw*gh), q=new Int32Array(gw*gh);
     for(let s0=0;s0<gw*gh;s0++){ if(!mask[s0]||lab[s0]) continue; let h=0,t=0,n=0,sx=0,sy=0,x0=1e9,x1=-1,y0=1e9,y1=-1,cr=0,cg=0,cb=0,rr=0,rg=0,rb=0; q[t++]=s0; lab[s0]=1;
       while(h<t){ const p=q[h++], px=p%gw, py=(p/gw)|0; n++; sx+=px; sy+=py; cr+=Pt.px[p*3]; cg+=Pt.px[p*3+1]; cb+=Pt.px[p*3+2]; rr+=ref[p*3]; rg+=ref[p*3+1]; rb+=ref[p*3+2]; if(px<x0)x0=px; if(px>x1)x1=px; if(py<y0)y0=py; if(py>y1)y1=py;
