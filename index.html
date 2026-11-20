@@ -598,7 +598,7 @@ function drawOv(){
   P.forEach((p,i)=>{ ovx.beginPath(); ovx.arc(p[0]*ov.width,p[1]*ov.height,5,0,7); ovx.fill(); ovx.fillText(i+1,p[0]*ov.width+8,p[1]*ov.height-8); });
   if(P.length===4 && vid.videoWidth && mode==='play' && adviceOn){ drawAdviceOnCamera(); drawRunoutOnCamera(); }
   else if(P.length===4 && vid.videoWidth && mode==='play') drawAidsOnCamera(game?(game.over?[]:game.items):drill().items, game?null:shotSpec(drill()));
-  if(P.length===4 && vid.videoWidth && mode==='play' && !adviceOn){ const H_=camH(1,1), k=ov.width/vid.videoWidth;
+  if(P.length===4 && vid.videoWidth && mode==='play' && !adviceOn && !bar){ const H_=camH(1,1), k=ov.width/vid.videoWidth;
     placeItems().forEach(it=>{ const [su,sv]=toSeen(it.u,it.v), [x,y]=camMap(H_,su,sv), [x2,y2]=camMap(H_,su+R/W(),sv), [x3,y3]=camMap(H_,su,sv+R/H());
       const r=Math.max(4,Math.max(Math.hypot(x2-x,y2-y),Math.hypot(x3-x,y3-y))*k), key=it.u.toFixed(4)+','+it.v.toFixed(4), ok=placed?placed[key]:null;
       // colours chosen to stand out on any felt (red, blue or green): black outline under a bright ring
