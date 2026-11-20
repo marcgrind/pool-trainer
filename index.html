@@ -1798,7 +1798,8 @@ function runoutTick(){
   found.forEach(b=>{ const L=ballLook(A,b); b.wf=L.wf; b.moved=!before.some(p=>dist(p,b)<1.5); });
   const cands=found.filter(b=>b.wf>=.45).sort((a,b)=>(b.moved-a.moved)||(b.wf-a.wf)), det=cands[0]&&cands[0].moved?cands[0]:null;
   const pl=runout.plan, obStart=pl.x.o, obStill=found.some(b=>dist(b,obStart)<1.2);
-  let f=!obStill&&runout.col?findColBall(A,runout.col):null; if(f && before.some(p=>dist(p,f)<1.5)) f=null;   // a same-coloured ball that never moved isn't ours
+  // the object ball is still on the table if a real ball now sits where no ball was before (other than the cue ball) and its colour fits
+  const movedBalls=found.filter(b=>b.moved && b!==det && !(b.wf>=.6)), f=!obStill && movedBalls.find(b=>colClose(b.col, pl.x.o.col));
   const made=!obStill && !f;
   const lines=[made?`Made the ${pl.x.o.name} ball ✓`:obStill?`Missed — the ${pl.x.o.name} ball didn’t move`:`Missed the ${pl.x.o.name} ball`];
   let zoneErr=null, inZone=false;
