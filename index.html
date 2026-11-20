@@ -1461,7 +1461,7 @@ function learnColors(A0){ const A=A0||rectify(); if(!A||!track) return; const F=
 function refreshSetup(A, det){
   if(!track || !track.obs.length || !A) return; const now=performance.now(); if(now-(track.setupAt||0)<900) return; track.setupAt=now;
   const w=W(), h=H(), dist=(a,b)=>Math.hypot((a.u-b.u)*w,(a.v-b.v)*h); if(!det || !track.cbStart || dist(det,track.cbStart)>1.5) return;
-  const fb=findBalls(A).filter(b=>dist(b,det)>BALL_D*.8), refs=track.obs.map(o=>fb.filter(b=>dist(b,o.start)<2.5).sort((a,b)=>dist(a,o.start)-dist(b,o.start))[0]);
+  const fb=findBalls(A).filter(b=>dist(b,det)>BALL_D*.8), refs=track.obs.map(o=>fb.filter(b=>dist(b,o.start)<(track.obs.length===1?6:2.5)).sort((a,b)=>dist(a,o.start)-dist(b,o.start))[0]);
   if(refs.some(r=>!r)) return;
   track.obs.forEach((o,i)=>{ o.ref={u:refs[i].u,v:refs[i].v,col:refs[i].col}; }); track.setupBalls=fb.map(b=>({u:b.u,v:b.v})); track.setupA=A; learnColors(A); }
 function colClose(a,b){ const ta=a[0]+a[1]+a[2]+1, tb=b[0]+b[1]+b[2]+1; return Math.hypot(a[0]/ta-b[0]/tb, a[1]/ta-b[1]/tb)<.07 && ta/tb>.6 && ta/tb<1.65; }
