@@ -622,6 +622,14 @@ function rectify(){
     const i=((sy|0)*vw+(sx|0))*4, o=(y*gw+x)*3; out[o]=img[i]; out[o+1]=img[i+1]; out[o+2]=img[i+2]; }
   return {px:out, gw, gh};
 }
+// Like rectify(), but for any patch of the table in seen coordinates (u0..u1, v0..v1 may go past the cushions into the pockets).
+function rectPatch(u0,u1,v0,v1,full){
+  const vw=vid.videoWidth, vh=vid.videoHeight; if(!vw || !st.cam.pts || st.cam.pts.length<4) return null;
+  let img=full; if(!img){ cvs.width=vw; cvs.height=vh; cctx.drawImage(vid,0,0); img=cctx.getImageData(0,0,vw,vh).data; }
+  const gw=Math.max(1,Math.round((u1-u0)*W()*P)), gh=Math.max(1,Math.round((v1-v0)*H()*P)), M=camH(1,1), out=new Uint8Array(gw*gh*3);
+  for(let y=0;y<gh;y++) for(let x=0;x<gw;x++){ const [sx,sy]=camMap(M,u0+(x+.5)/(W()*P),v0+(y+.5)/(H()*P)); if(sx<0||sy<0||sx>=vw||sy>=vh) continue;
+    const i=((sy|0)*vw+(sx|0))*4, o=(y*gw+x)*3; out[o]=img[i]; out[o+1]=img[i+1]; out[o+2]=img[i+2]; }
+  return {px:out,gw,gh,u0,v0,img}; }
 // Camera at the foot end, low angle: a ball's image lands farther from the camera than the ball.
 // camGround = where the camera stands (table coords), st.cam.height = lens height above the felt (inches).
 const camGround = () => st.cam.ground || [1 + 8/W(), .5];   // where the camera stands (table coords); default = beyond the foot rail
@@ -1257,7 +1265,7 @@ function voiceCmd(t){ listenUntil=0;
   else if(/\bscore\b/.test(t)){ heardAt=performance.now(); toast('Heard: score'); capture().then(det=>{ finishShotFeedback(null, det); scoreShot(det); }); }
 }
 function again(){ result=null; if(game&&game.over){ startGame(game.type); return; } enterPlacing(); render(); speak('Set up the balls'); }
-window.__pt = { W:()=>W(), H:()=>H(), toSeen:(u,v)=>toSeen(u,v), ballLook:(A,b)=>ballLook(A,b), pickCue:(A,f)=>pickCue(A,f), get cueMark(){ return cueMark; }, setCueMark:(u,v)=>setCueMark(u,v), camToTable:(x,y)=>camToTable(x,y), rectify:()=>rectify(), findBalls:(A,d)=>findBalls(A,d), detect:A=>detect(A), feltChroma:A=>feltChroma(A), shotOptions:A=>shotOptions(A), whiteDbg:A=>{ const o=shotOptions(A); return {cue:o.cue&&[o.cue.u*W(),o.cue.v*H(),o.cue.wf], balls:(o.balls||[]).map(b=>[+(b.u*W()).toFixed(1),+(b.v*H()).toFixed(1),+(b.wf||0).toFixed(2),b.name])}; } };
+window.__pt = { rectPatch:(a,b,c,d)=>rectPatch(a,b,c,d), POCKETS:()=>POCKETS, W:()=>W(), H:()=>H(), toSeen:(u,v)=>toSeen(u,v), ballLook:(A,b)=>ballLook(A,b), pickCue:(A,f)=>pickCue(A,f), get cueMark(){ return cueMark; }, setCueMark:(u,v)=>setCueMark(u,v), camToTable:(x,y)=>camToTable(x,y), rectify:()=>rectify(), findBalls:(A,d)=>findBalls(A,d), detect:A=>detect(A), feltChroma:A=>feltChroma(A), shotOptions:A=>shotOptions(A), whiteDbg:A=>{ const o=shotOptions(A); return {cue:o.cue&&[o.cue.u*W(),o.cue.v*H(),o.cue.wf], balls:(o.balls||[]).map(b=>[+(b.u*W()).toFixed(1),+(b.v*H()).toFixed(1),+(b.wf||0).toFixed(2),b.name])}; } };
 window.__poolDebug = { get track(){ return track; }, get lastShot(){ return lastShot; }, get state(){ return shotState; } };
 
 // ---------- shot recorder: saves the webcam clip + tracking data for each shot ----------
