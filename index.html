@@ -535,7 +535,7 @@ addEventListener('pointerup', ()=>{ if(!drag) return;
 var camState='off', camDevs=[], camPick=-1, result=null, shotState='armed', stillSince=0, capturing=false, lastRender=0, lastDet=null;
 let stream=null, prevSmall=null, loopTimer=null;
 const vid=$('vid'), ov=$('ov'), ovx=(()=>{ const c=ov.getContext('2d');
-  ['fillText','strokeText'].forEach(fn=>{ const orig=c[fn].bind(c); c[fn]=(t,x,y,...m)=>{ if(!st.camFlip) return orig(t,x,y,...m); c.save(); c.translate(x,y); c.rotate(Math.PI); orig(t,0,0,...m); c.restore(); }; }); return c; })(), maskc=$('maskc'), mx=maskc.getContext('2d');
+  ['fillText','strokeText'].forEach(fn=>{ const orig=c[fn].bind(c); c[fn]=(t,x,y,...m)=>{ if(!st.camFlip) return orig(t,x,y,...m); c.save(); c.translate(x,y); c.rotate(Math.PI); const ta=c.textAlign; c.textAlign = ta==='center'?'center':(ta==='right'||ta==='end')?'left':'right'; orig(t,0,0,...m); c.restore(); }; }); return c; })(), maskc=$('maskc'), mx=maskc.getContext('2d');
 const cvs=document.createElement('canvas'), cctx=cvs.getContext('2d',{willReadFrequently:true});
 const sm=document.createElement('canvas'); sm.width=192; sm.height=108; const smx=sm.getContext('2d',{willReadFrequently:true});
 
