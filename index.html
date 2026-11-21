@@ -1808,7 +1808,7 @@ function logShot(a, det){
 function profile(){ const P={}; SKILLS.forEach(k=>P[k]={n:0,made:0,mk:0,pos:0,pk:0,err:0,en:0});
   (st.log||[]).forEach(e=>e.keys.forEach(k=>{ const p=P[k]; if(!p) return; p.n++; if(e.made!=null){ p.mk++; if(e.made) p.made++; } if(e.posOK!=null){ p.pk++; if(e.posOK) p.pos++; } if(e.err!=null){ p.err+=e.err; p.en++; } }));
   Object.values(P).forEach(p=>{ p.makeRate=(p.made+1)/(p.mk+2); p.posRate=(p.pos+1)/(p.pk+2); p.avgErr=p.en?p.err/p.en:null;
-    p.weak=(1-p.makeRate)*.6+(1-p.posRate)*.4 + (p.n<5?.25:0); });
+    p.weak=(1-p.makeRate)*.6+(1-p.posRate)*.4 + (p.n<5?.4:0); });   // under 5 shots: try it before re-drilling a known weakness
   return P; }
 function showProgress(){
   const P=profile(), pct=x=>Math.round(x*100)+'%', rows=SKILLS.map(k=>{ const p=P[k]; return `<tr><td>${k}</td><td>${p.n}</td><td>${p.mk?pct(p.made/p.mk):'–'}</td><td>${p.pk?pct(p.pos/p.pk):'–'}</td><td>${p.avgErr!=null?p.avgErr.toFixed(1)+'"':'–'}</td></tr>`; }).join('');
@@ -1831,10 +1831,10 @@ function levelled(d, L){ const c=JSON.parse(JSON.stringify(d)); c.name=d.name; c
   c.notes=`Coach · level ${L} — ${d.notes||''}`; return c; }
 function coachPick(){
   const P=profile(), cands=st.drills.map((d,i)=>({i,d,keys:drillKeys(d)})).filter(x=>!/Random rack|Line of balls|runout/i.test(x.d.name));
-  cands.forEach(x=>{ x.score=x.keys.reduce((a,k)=>a+(P[k]?P[k].weak:0),0)/x.keys.length + Math.random()*.08; });
+  cands.forEach(x=>{ x.score=x.keys.reduce((a,k)=>a+(P[k]?P[k].weak:0),0)/x.keys.length + Math.random()*.08 - (x.d.name===coach.last?.35:0); });
   cands.sort((a,b)=>b.score-a.score); const pick=cands[0]; if(!pick) return;
   const keys=pick.keys.slice().sort((a,b)=>P[b].weak-P[a].weak), L=(st.levels||{})[pick.d.name]||1;
-  coach.base=pick.i; coach.key=keys[0]; coach.level=L; coach.d=levelled(pick.d,L); coach.streak=0; coach.misses=0; coach.attempts=0;
+  coach.last=pick.d.name; coach.base=pick.i; coach.key=keys[0]; coach.level=L; coach.d=levelled(pick.d,L); coach.streak=0; coach.misses=0; coach.attempts=0;
   const p=P[coach.key]; coach.why = p.n<5 ? `not enough ${coach.key}s logged yet` : `${coach.key}: ${Math.round(p.made/Math.max(1,p.mk)*100)}% made, ${Math.round(p.pos/Math.max(1,p.pk)*100)}% on position`;
   result=null; lastShot=null; enterPlacing(); buildPanel(); render();
   showFeedback([`Coach: ${pick.d.name}, level ${L}`, `Why: ${coach.why}`, '3 good shots in a row = next level · 2 misses in a row = back a level']); }
