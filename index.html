@@ -224,7 +224,8 @@ function itemSVG(it, selected){
 const esc = t => String(t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 const DEFS='<defs><marker id="arY" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4" markerHeight="4" orient="auto"><path d="M0,0 L10,5 L0,10z" fill="#ffd400"/></marker><marker id="arC" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4" markerHeight="4" orient="auto"><path d="M0,0 L10,5 L0,10z" fill="#00e5ff"/></marker></defs>';
-function render(){
+function render(){ const s=buildSVG(); svg.innerHTML=s; finishRender(); projSend(); }
+function buildSVG(){
   const w=W(), h=H(), d=drill();
   svg.setAttribute('viewBox',`0 0 ${w} ${h}`); svg.setAttribute('width',w*S); svg.setAttribute('height',h*S);
   let s=DEFS;
@@ -257,8 +258,8 @@ function render(){
     if (result && result.u!=null) s+=markerSVG(result);
   }
   if (mode!=='cal' && mode!=='cam'){
-    if (game && mode==='play'){ s+=gameSVG(); s+=trailSVG(); s+=placementSVG(); s+=camStatus(); if (result) s+=markerSVG(result); svg.innerHTML=s; return finishRender(); }
-    if (mode==='play' && adviceOn){ s+=adviceSVG()+runoutSVG(); svg.innerHTML=s; return finishRender(); }
+    if (game && mode==='play'){ s+=gameSVG(); s+=trailSVG(); s+=placementSVG(); s+=camStatus(); if (result) s+=markerSVG(result); return s; }
+    if (mode==='play' && adviceOn){ s+=adviceSVG()+runoutSVG(); return s; }
     if (mode!=='edit') s+=aidSVG(d.items, shotSpec(d));
     d.items.forEach((it,i)=> s+=itemSVG(it, mode==='edit' && i===sel));
     if (mode==='play') s+=trailSVG()+placementSVG();
@@ -270,8 +271,7 @@ function render(){
     s+=camStatus();
     if (result && mode==='play') s+=markerSVG(result);
   }
-  svg.innerHTML = s;
-  finishRender();
+  return s;
 }
 // Text at the head end, rotated to face the shooter standing there (used when the projector is end-mounted)
 function headText(u, str, size, fill, weight){ const x=fx(u), y=H()/2;
@@ -366,6 +366,7 @@ function buildPanel(){
       <button data-act="statsReset">Reset scores</button>
       <button data-act="lib">Back up / move setup</button></div>
     <div class="row"><button class="${st.screenView?'on':''}" data-act="screenView">No projector – show the table on this screen</button>
+      <button class="${st.projWin?'on':''}" data-act="projWin" title="Show the table drawing in a second window on the projector screen (open proj.html there)">Projector window${st.projWin?(projSize?' · connected':' · waiting'):''}</button><button data-act="projAlign" title="Project dots and line the drawing up with the table automatically">Auto-align projector</button>
       <button class="${emptyRef?'on':''}" data-act="emptyRef">${emptyRef?'Empty table captured':'Capture empty table'}</button>
       <button class="${st.sound!==false?'on':''}" data-act="sound">Sounds</button>
       <button class="${st.speak===true?'on':''}" data-act="speak">Speak feedback</button>
@@ -432,6 +433,8 @@ panel.addEventListener('click', e=>{
     case 'usbFlip': st.usbFlip=!st.usbFlip; break;
     case 'usbExport': exportUSB(); return;
     case 'camStart': startCam(); return;
+    case 'projWin': st.projWin=!st.projWin; save(); if(st.projWin) window.open('proj.html','pt-projector','popup,width=900,height=600'); else projCh.postMessage({frame:{svg:'',w:1,h:1,S:1,hm:[1,0,0,0,1,0,0,0,1]}}); buildPanel(); render(); return;
+    case 'projAlign': projAutoAlign(); return;
     case 'camFlip': st.camView=((st.camView||0)+1)%4; save(); buildPanel(); drawOv(); return;
     case 'camLens': if(!st.cam.pts||st.cam.pts.length<4){ toast('Set the camera corners first'); return; } camPick=4; st.cam.side=[]; st.cam.k=0; buildPanel(); drawOv(); toast('Click the cushion point at the middle of each side pocket: S1 on the 1–2 side, then S2 on the 3–4 side'); return;
     case 'camCorners': camPick=0; st.cam.pts=[]; st.cam.ft=[]; st.cam.lin=null; /* fine-tune belongs to the old position */ buildPanel(); drawOv(); return;
@@ -483,7 +486,7 @@ panel.addEventListener('input', e=>{
 });
 
 // ---------- library modal ----------
-const SETTING_KEYS=['size','screenView','cam','camView','best','sound','speak','endMount','corners','outline','title'];
+const SETTING_KEYS=['size','screenView','cam','camView','projWin','projCorners','projDelay','best','sound','speak','endMount','corners','outline','title'];
 function openLib(){ const settings={}; SETTING_KEYS.forEach(k=>{ if(st[k]!==undefined) settings[k]=st[k]; }); $('json').value=JSON.stringify({drills:st.drills, settings},null,1); $('modal').style.display='flex'; }
 function parseLib(){ try { const j=JSON.parse($('json').value); const arr=Array.isArray(j)?j:j.drills; if(!Array.isArray(arr)) throw 0; return arr.filter(x=>x&&Array.isArray(x.items)); } catch(e){ toast('That is not a valid drill library'); return null; } }
 $('modal').addEventListener('click', e=>{
@@ -734,13 +737,50 @@ function spotWhite(A,u,v,tol){
     n++; if(mn>=st.cam.white && Math.max(a,b,c)-mn<=st.cam.sat) w++; }
   return n?w/n:0;
 }
-const useBlank = () => !st.screenView;  // only blank when a projector is lighting the table
+const useBlank = () => !st.screenView || projOn();  // only blank when a projector is lighting the table
+// ---------- projector window (second screen, e.g. AirPlay "separate display") ----------
+// The trainer stays on the laptop; proj.html, open in another window of this browser on the projector screen, shows the
+// table drawing only. They talk over a BroadcastChannel (instant, same computer). projCorners = where the table's four
+// corners sit in that window, as fractions of its width/height (set by Auto-align).
+const projCh = new BroadcastChannel('pt-display'); var projSize=null, projSeen=0;
+projCh.onmessage=e=>{ const d=e.data||{}; if(d.hello){ const was=!!projSize; projSize={w:d.w,h:d.h,fs:d.fs}; projSeen=Date.now(); if(!was) buildPanel(); projSend(); } if(d.ack&&projAcks[d.ack]) { projAcks[d.ack](); delete projAcks[d.ack]; } };
+const projAcks={};
+setInterval(()=>projCh.postMessage({ping:1}), 3000);
+const projOn = () => !!(st.projWin && projSize && Date.now()-projSeen<10000);
+function projSend(){ if(!projOn() || !st.projCorners) return; const keep=st.screenView; let ps; st.screenView=false; try{ ps=buildSVG(); } finally{ st.screenView=keep; }
+  const hm=homog(srcRect(), st.projCorners.map(([x,y])=>[x*projSize.w, y*projSize.h]));
+  projCh.postMessage({frame:{svg:ps, w:W(), h:H(), S, hm}, pattern:null}); }
+// fit a homography to many point pairs (least squares, h33=1)
+function fitH(src,dst){ const N=[...Array(8)].map(()=>Array(8).fill(0)), r=Array(8).fill(0);
+  src.forEach(([x,y],i)=>{ const [u,v]=dst[i]; [[x,y,1,0,0,0,-u*x,-u*y,u],[0,0,0,x,y,1,-v*x,-v*y,v]].forEach(row=>{ for(let a=0;a<8;a++){ r[a]+=row[a]*row[8]; for(let b=0;b<8;b++) N[a][b]+=row[a]*row[b]; } }); });
+  return [...solve(N,r),1]; }
+// Auto-align: project dots one at a time, find each on the table with the camera, then work out where the table's corners
+// fall on the projector screen. Needs the room fairly dark and the table clear.
+async function projAutoAlign(){
+  if(camState!=='on'||!projSize){ toast('Start the camera and open the projector window first'); return; }
+  const sleep=ms=>new Promise(r=>setTimeout(r,ms)), wait=(st.projDelay||400)+900;
+  const lum=A=>{ const g=new Float32Array(A.gw*A.gh); for(let i=0;i<g.length;i++) g[i]=A.px[i*3]+A.px[i*3+1]+A.px[i*3+2]; return g; };
+  const find=(a,b,gw,gh)=>{ let best=0; const d=new Float32Array(a.length), m=6; for(let y=m;y<gh-m;y++) for(let x=m;x<gw-m;x++){ const i=y*gw+x; d[i]=(a[i]-b[i])/3; if(d[i]>best) best=d[i]; }
+    if(best<50) return null; const thr=Math.max(35,best*.5); let n=0,sx=0,sy=0,sw=0; for(let i=0;i<d.length;i++) if(d[i]>thr){ const g=d[i]-thr; n++; sx+=(i%gw)*g; sy+=((i/gw)|0)*g; sw+=g; }
+    return n>=6 ? toTrue((sx/sw+.5)/gw,(sy/sw+.5)/gh) : null; };
+  projAligning=true; toast('Auto-align: projecting dots — keep the table clear'); const src=[], dst=[];
+  projCh.postMessage({pattern:{bg:'#000'}}); await sleep(wait+800); let base=lum(rectify());
+  for(const py of [.05,.2,.35,.5,.65,.8,.95]) for(const px of [.05,.2,.35,.5,.65,.8,.95]){
+    projCh.postMessage({pattern:{bg:'#000',dots:[[px,py,14]]}}); await sleep(wait); const A=rectify(), uv=find(lum(A),base,A.gw,A.gh);
+    if(uv && uv[0]>.01 && uv[0]<.99 && uv[1]>.02 && uv[1]<.98){ src.push([px,py]); dst.push(uv); }
+    projCh.postMessage({pattern:{bg:'#000'}}); await sleep(wait*.8); base=lum(rectify()); }
+  projAligning=false;
+  if(src.length<6){ projCh.postMessage({pattern:null}); toast(`Auto-align found only ${src.length} dots on the table — darken the room or aim the projector at the table`); return; }
+  const Hp=fitH(dst,src), err=Math.sqrt(dst.reduce((a,uv,i)=>{ const [x,y]=apply(Hp,uv[0],uv[1]); return a+((x-src[i][0])*projSize.w)**2+((y-src[i][1])*projSize.h)**2; },0)/src.length);
+  st.projCorners=[[0,0],[1,0],[1,1],[0,1]].map(([dx,dy])=>apply(Hp, st.flipX?1-dx:dx, st.flipY?1-dy:dy)); save();
+  projCh.postMessage({pattern:null}); render(); toast(`Projector aligned from ${src.length} dots (fit error ${err.toFixed(1)} px)`); buildPanel(); return {n:src.length, err}; }
+var projAligning=false;
 function blankGrab(){
   if(camState!=='on') return Promise.resolve(null);
   if(!useBlank()) return Promise.resolve(rectify());
-  capturing=true; $('blk').style.display='block';
+  capturing=true; $('blk').style.display='block'; if(projOn()) projCh.postMessage({blank:true});
   return new Promise(res=>setTimeout(()=>{ let A=null; try{ A=rectify(); }catch(e){}
-    $('blk').style.display=blackout?'block':'none'; capturing=false; lastRender=performance.now(); res(A); }, st.cam.delay));
+    $('blk').style.display=blackout?'block':'none'; if(projOn()) projCh.postMessage({blank:false}); capturing=false; lastRender=performance.now(); res(A); }, st.cam.delay + (projOn()?(st.projDelay||400):0)));
 }
 function capture(){
   if(camState!=='on'){ toast('Start the camera first (Camera mode)'); return Promise.resolve(null); }
@@ -1299,7 +1339,7 @@ function voiceCmd(t){ listenUntil=0;
   else if(/\bscore\b/.test(t)){ heardAt=performance.now(); toast('Heard: score'); capture().then(det=>{ finishShotFeedback(null, det); scoreShot(det); }); }
 }
 function again(){ result=null; if(game&&game.over){ startGame(game.type); return; } enterPlacing(); render(); speak('Set up the balls'); }
-window.__pt = { get bar(){ return bar; }, barCensus:A=>barCensus(A), ballKind:(A,b)=>ballKind(A,b),  get runout(){ return runout; },  feltModel:A=>feltModel(A),  replayJudge:c=>replayJudge(c),  replaySetup:c=>replaySetup(c),  findBallsOpt:(A,d,o)=>findBalls(A,d,o),  clipList:()=>clipList(), rejudge:(c,o)=>rejudge(c,o), obStates:(A,d)=>obStates(A,d), refreshSetup:(A,d)=>refreshSetup(A,d), getTrack:()=>track, setTrack:t=>{track=t;},  savePocketRefs:()=>savePocketRefs(), jawBalls:(f,d)=>jawBalls(f,d), rectPatch:(a,b,c,d)=>rectPatch(a,b,c,d), POCKETS:()=>POCKETS, W:()=>W(), H:()=>H(), toSeen:(u,v)=>toSeen(u,v), ballLook:(A,b)=>ballLook(A,b), pickCue:(A,f)=>pickCue(A,f), get cueMark(){ return cueMark; }, setCueMark:(u,v)=>setCueMark(u,v), camToTable:(x,y)=>camToTable(x,y), rectify:s=>rectify(s), findBalls:(A,d)=>findBalls(A,d), detect:A=>detect(A), feltChroma:A=>feltChroma(A), shotOptions:A=>shotOptions(A), whiteDbg:A=>{ const o=shotOptions(A); return {cue:o.cue&&[o.cue.u*W(),o.cue.v*H(),o.cue.wf], balls:(o.balls||[]).map(b=>[+(b.u*W()).toFixed(1),+(b.v*H()).toFixed(1),+(b.wf||0).toFixed(2),b.name])}; } };
+window.__pt = { projAutoAlign:()=>projAutoAlign(), fitH:(a,b)=>fitH(a,b), get projSize(){ return projSize; },  get bar(){ return bar; }, barCensus:A=>barCensus(A), ballKind:(A,b)=>ballKind(A,b),  get runout(){ return runout; },  feltModel:A=>feltModel(A),  replayJudge:c=>replayJudge(c),  replaySetup:c=>replaySetup(c),  findBallsOpt:(A,d,o)=>findBalls(A,d,o),  clipList:()=>clipList(), rejudge:(c,o)=>rejudge(c,o), obStates:(A,d)=>obStates(A,d), refreshSetup:(A,d)=>refreshSetup(A,d), getTrack:()=>track, setTrack:t=>{track=t;},  savePocketRefs:()=>savePocketRefs(), jawBalls:(f,d)=>jawBalls(f,d), rectPatch:(a,b,c,d)=>rectPatch(a,b,c,d), POCKETS:()=>POCKETS, W:()=>W(), H:()=>H(), toSeen:(u,v)=>toSeen(u,v), ballLook:(A,b)=>ballLook(A,b), pickCue:(A,f)=>pickCue(A,f), get cueMark(){ return cueMark; }, setCueMark:(u,v)=>setCueMark(u,v), camToTable:(x,y)=>camToTable(x,y), rectify:s=>rectify(s), findBalls:(A,d)=>findBalls(A,d), detect:A=>detect(A), feltChroma:A=>feltChroma(A), shotOptions:A=>shotOptions(A), whiteDbg:A=>{ const o=shotOptions(A); return {cue:o.cue&&[o.cue.u*W(),o.cue.v*H(),o.cue.wf], balls:(o.balls||[]).map(b=>[+(b.u*W()).toFixed(1),+(b.v*H()).toFixed(1),+(b.wf||0).toFixed(2),b.name])}; } };
 window.__poolDebug = { get track(){ return track; }, get lastShot(){ return lastShot; }, get state(){ return shotState; } };
 
 // ---------- shot recorder: saves the webcam clip + tracking data for each shot ----------
