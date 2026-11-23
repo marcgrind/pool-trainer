@@ -486,7 +486,7 @@ panel.addEventListener('input', e=>{
 });
 
 // ---------- library modal ----------
-const SETTING_KEYS=['size','screenView','cam','camView','projWin','projCorners','projDelay','best','sound','speak','endMount','corners','outline','title'];
+const SETTING_KEYS=['size','screenView','cam','camView','projWin','projCorners','projDelay','projAlignSize','best','sound','speak','endMount','corners','outline','title'];
 function openLib(){ const settings={}; SETTING_KEYS.forEach(k=>{ if(st[k]!==undefined) settings[k]=st[k]; }); $('json').value=JSON.stringify({drills:st.drills, settings},null,1); $('modal').style.display='flex'; }
 function parseLib(){ try { const j=JSON.parse($('json').value); const arr=Array.isArray(j)?j:j.drills; if(!Array.isArray(arr)) throw 0; return arr.filter(x=>x&&Array.isArray(x.items)); } catch(e){ toast('That is not a valid drill library'); return null; } }
 $('modal').addEventListener('click', e=>{
@@ -743,7 +743,8 @@ const useBlank = () => !st.screenView || projOn();  // only blank when a project
 // table drawing only. They talk over a BroadcastChannel (instant, same computer). projCorners = where the table's four
 // corners sit in that window, as fractions of its width/height (set by Auto-align).
 const projCh = new BroadcastChannel('pt-display'); var projSize=null, projSeen=0;
-projCh.onmessage=e=>{ const d=e.data||{}; if(d.hello){ const was=!!projSize; projSize={w:d.w,h:d.h,fs:d.fs}; projSeen=Date.now(); if(!was) buildPanel(); projSend(); } if(d.ack&&projAcks[d.ack]) { projAcks[d.ack](); delete projAcks[d.ack]; } };
+projCh.onmessage=e=>{ const d=e.data||{}; if(d.hello){ const was=!!projSize, a=st.projAlignSize; projSize={w:d.w,h:d.h,fs:d.fs}; projSeen=Date.now(); if(!was) buildPanel(); projSend();
+    if(st.projWin && a && (Math.abs(a.w-d.w)>4 || Math.abs(a.h-d.h)>4) && Date.now()-(projSizeWarned||0)>20000){ projSizeWarned=Date.now(); toast(`Projector window is ${d.w}×${d.h}, but it was aligned at ${a.w}×${a.h} — make it full screen, or run Auto-align again`); } } if(d.ack&&projAcks[d.ack]) { projAcks[d.ack](); delete projAcks[d.ack]; } };
 const projAcks={};
 setInterval(()=>projCh.postMessage({ping:1}), 3000);
 const projOn = () => !!(st.projWin && projSize && Date.now()-projSeen<10000);
@@ -772,9 +773,9 @@ async function projAutoAlign(){
   projAligning=false;
   if(src.length<6){ projCh.postMessage({pattern:null}); toast(`Auto-align found only ${src.length} dots on the table — darken the room or aim the projector at the table`); return; }
   const Hp=fitH(dst,src), err=Math.sqrt(dst.reduce((a,uv,i)=>{ const [x,y]=apply(Hp,uv[0],uv[1]); return a+((x-src[i][0])*projSize.w)**2+((y-src[i][1])*projSize.h)**2; },0)/src.length);
-  st.projCorners=[[0,0],[1,0],[1,1],[0,1]].map(([dx,dy])=>apply(Hp, st.flipX?1-dx:dx, st.flipY?1-dy:dy)); save();
+  st.projAlignSize={w:projSize.w,h:projSize.h}; st.projCorners=[[0,0],[1,0],[1,1],[0,1]].map(([dx,dy])=>apply(Hp, st.flipX?1-dx:dx, st.flipY?1-dy:dy)); save();
   projCh.postMessage({pattern:null}); render(); toast(`Projector aligned from ${src.length} dots (fit error ${err.toFixed(1)} px)`); buildPanel(); return {n:src.length, err}; }
-var projAligning=false;
+var projAligning=false, projSizeWarned=0;
 function blankGrab(){
   if(camState!=='on') return Promise.resolve(null);
   if(!useBlank()) return Promise.resolve(rectify());
