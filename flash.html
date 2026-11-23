@@ -12,4 +12,8 @@ ch.onmessage=e=>{ const d=e.data||{};
     requestAnimationFrame(()=>requestAnimationFrame(()=>ch.postMessage({ack:d.id, t:Date.now()}))); }
   if(d.ping) ch.postMessage({pong:1, w:innerWidth, h:innerHeight, fs:!!document.fullscreenElement}); };
 ch.postMessage({hello:1});
+// ?clock: a big running clock (same clock on every window of this browser). Open it on both screens and take one
+// phone photo showing both: the difference between the two numbers is the AirPlay delay.
+if(/clock/.test(location.search)){ const el=document.getElementById('m'); el.style.cssText='position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font:bold 22vw ui-monospace,Menlo,monospace';
+  const tick=()=>{ const t=Date.now()%100000; el.textContent=(t/1000).toFixed(2); requestAnimationFrame(tick); }; tick(); }
 </script></body></html>
