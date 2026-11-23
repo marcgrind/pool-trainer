@@ -766,7 +766,7 @@ function fitH(src,dst){ const N=[...Array(8)].map(()=>Array(8).fill(0)), r=Array
 // fall on the projector screen. Needs the room fairly dark and the table clear.
 async function projAutoAlign(){
   if(camState!=='on'||!projSize){ toast('Start the camera and open the projector window first'); return; }
-  const sleep=ms=>new Promise(r=>setTimeout(r,ms)), wait=(st.projDelay||400)+900;
+  const sleep=ms=>new Promise(r=>setTimeout(r,ms)), wait=(st.projDelay||700)+900;
   const lum=A=>{ const g=new Float32Array(A.gw*A.gh); for(let i=0;i<g.length;i++) g[i]=A.px[i*3]+A.px[i*3+1]+A.px[i*3+2]; return g; };
   const find=(a,b,gw,gh)=>{ let best=0; const d=new Float32Array(a.length), m=6; for(let y=m;y<gh-m;y++) for(let x=m;x<gw-m;x++){ const i=y*gw+x; d[i]=(a[i]-b[i])/3; if(d[i]>best) best=d[i]; }
     if(best<50) return null; const thr=Math.max(35,best*.5); let n=0,sx=0,sy=0,sw=0; for(let i=0;i<d.length;i++) if(d[i]>thr){ const g=d[i]-thr; n++; sx+=(i%gw)*g; sy+=((i/gw)|0)*g; sw+=g; }
@@ -801,7 +801,7 @@ function projNudge(alongLength, inches){ if(!st.projCorners) return; const U=[[0
 // each one actually lands, and refit. Every dot is on the felt, so this is far more accurate than the first pass.
 async function projRefine(){
   if(camState!=='on'||!projSize||!st.projCorners){ toast('Run Auto-align first'); return; }
-  const sleep=ms=>new Promise(r=>setTimeout(r,ms)), wait=(st.projDelay||400)+900;
+  const sleep=ms=>new Promise(r=>setTimeout(r,ms)), wait=(st.projDelay||700)+900;
   const lum=A=>{ const g=new Float32Array(A.gw*A.gh); for(let i=0;i<g.length;i++) g[i]=A.px[i*3]+A.px[i*3+1]+A.px[i*3+2]; return g; };
   const find=(a,b,gw,gh,eu,ev)=>{ const [su,sv]=toSeen(eu,ev), cx=su*gw, cy=sv*gh, r=P*6; let best=0; const d=new Float32Array(a.length);
     for(let y=Math.max(0,cy-r|0);y<Math.min(gh,cy+r);y++) for(let x=Math.max(0,cx-r|0);x<Math.min(gw,cx+r);x++){ const i=y*gw+x; d[i]=(a[i]-b[i])/3; if(d[i]>best) best=d[i]; }
@@ -827,7 +827,7 @@ function blankGrab(){
   if(!useBlank()) return Promise.resolve(rectify());
   capturing=true; $('blk').style.display='block'; if(projOn()) projCh.postMessage({blank:true});
   return new Promise(res=>setTimeout(()=>{ let A=null; try{ A=rectify(); }catch(e){}
-    $('blk').style.display=blackout?'block':'none'; if(projOn()) projCh.postMessage({blank:false}); blankEnd=performance.now(); capturing=false; lastRender=performance.now(); res(A); }, st.cam.delay + (projOn()?(st.projDelay||400):0)));
+    $('blk').style.display=blackout?'block':'none'; if(projOn()) projCh.postMessage({blank:false}); blankEnd=performance.now(); capturing=false; lastRender=performance.now(); res(A); }, st.cam.delay + (projOn()?(st.projDelay||700):0)));
 }
 function capture(){
   if(camState!=='on'){ toast('Start the camera first (Camera mode)'); return Promise.resolve(null); }
@@ -929,7 +929,7 @@ function tick(){
   let tmk=null; if(st.cam.pts&&st.cam.pts.length===4){ const G=tkGeometry(); if(!G.thumb){ G.thumb=new Uint8Array(192*108); for(let y=0;y<108;y++) for(let x=0;x<192;x++) G.thumb[y*192+x]=G.mask[(y*5)*TKW+x*5]; } tmk=G.thumb; }
   let diff=0; for(let i=0;i<cur.length;i++){ cur[i]=(d[i*4]+d[i*4+1]*2+d[i*4+2])>>2; if(prevSmall && (!tmk||tmk[i]) && Math.abs(cur[i]-prevSmall[i])>18) diff++; }
   // the projector going dark and coming back (our own blanking, delayed by AirPlay) is not movement
-  const motion = prevSmall && performance.now()-blankEnd > (projOn()?(st.projDelay||400)+700:250) ? diff : 0; prevSmall=cur;   // only changes on the playing surface count
+  const motion = prevSmall && performance.now()-blankEnd > (projOn()?(st.projDelay||700)+700:250) ? diff : 0; prevSmall=cur;   // only changes on the playing surface count
   const m=document.querySelector('#meter i'); if(m) m.style.width=Math.min(100,motion/(st.cam.mth*2)*100)+'%';
   const now=performance.now();
   if(useBlank() && now-lastRender<900) return;
