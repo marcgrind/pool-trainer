@@ -741,6 +741,7 @@ function spotWhite(A,u,v,tol){
     n++; if(mn>=st.cam.white && Math.max(a,b,c)-mn<=st.cam.sat) w++; }
   return n?w/n:0;
 }
+var blankEnd=0;
 const useBlank = () => !st.screenView || projOn();  // only blank when a projector is lighting the table
 // ---------- projector window (second screen, e.g. AirPlay "separate display") ----------
 // The trainer stays on the laptop; proj.html, open in another window of this browser on the projector screen, shows the
@@ -824,7 +825,7 @@ function blankGrab(){
   if(!useBlank()) return Promise.resolve(rectify());
   capturing=true; $('blk').style.display='block'; if(projOn()) projCh.postMessage({blank:true});
   return new Promise(res=>setTimeout(()=>{ let A=null; try{ A=rectify(); }catch(e){}
-    $('blk').style.display=blackout?'block':'none'; if(projOn()) projCh.postMessage({blank:false}); capturing=false; lastRender=performance.now(); res(A); }, st.cam.delay + (projOn()?(st.projDelay||400):0)));
+    $('blk').style.display=blackout?'block':'none'; if(projOn()) projCh.postMessage({blank:false}); blankEnd=performance.now(); capturing=false; lastRender=performance.now(); res(A); }, st.cam.delay + (projOn()?(st.projDelay||400):0)));
 }
 function capture(){
   if(camState!=='on'){ toast('Start the camera first (Camera mode)'); return Promise.resolve(null); }
@@ -921,7 +922,8 @@ function tick(){
   smx.drawImage(vid,0,0,192,108); const d=smx.getImageData(0,0,192,108).data, cur=new Uint8Array(192*108);
   let tmk=null; if(st.cam.pts&&st.cam.pts.length===4){ const G=tkGeometry(); if(!G.thumb){ G.thumb=new Uint8Array(192*108); for(let y=0;y<108;y++) for(let x=0;x<192;x++) G.thumb[y*192+x]=G.mask[(y*5)*TKW+x*5]; } tmk=G.thumb; }
   let diff=0; for(let i=0;i<cur.length;i++){ cur[i]=(d[i*4]+d[i*4+1]*2+d[i*4+2])>>2; if(prevSmall && (!tmk||tmk[i]) && Math.abs(cur[i]-prevSmall[i])>18) diff++; }
-  const motion = prevSmall ? diff : 0; prevSmall=cur;   // only changes on the playing surface count
+  // the projector going dark and coming back (our own blanking, delayed by AirPlay) is not movement
+  const motion = prevSmall && performance.now()-blankEnd > (projOn()?(st.projDelay||400)+700:250) ? diff : 0; prevSmall=cur;   // only changes on the playing surface count
   const m=document.querySelector('#meter i'); if(m) m.style.width=Math.min(100,motion/(st.cam.mth*2)*100)+'%';
   const now=performance.now();
   if(useBlank() && now-lastRender<900) return;
