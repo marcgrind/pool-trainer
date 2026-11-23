@@ -774,7 +774,7 @@ async function projAutoAlign(){
   if(src.length<6){ projCh.postMessage({pattern:null}); toast(`Auto-align found only ${src.length} dots on the table — darken the room or aim the projector at the table`); return; }
   window.__projAlignPts={src:src.slice(),dst:dst.slice(),w:projSize.w,h:projSize.h};
   // a spot that "lights up" for many different dots is a flickering light or screen in view, not a projected dot
-  for(let i=src.length-1;i>=0;i--){ const same=dst.filter(d=>Math.hypot((d[0]-dst[i][0])*W(),(d[1]-dst[i][1])*H())<2.5).length; if(same>=3){ src.splice(i,1); dst.splice(i,1); } }
+  for(let i=src.length-1;i>=0;i--){ const same=dst.filter(d=>Math.hypot((d[0]-dst[i][0])*W(),(d[1]-dst[i][1])*H())<5).length; if(same>=3){ src.splice(i,1); dst.splice(i,1); } }
   // drop false detections (a reflection, someone moving, a light): refit without the worst point until the fit is tight
   const resid=(H_,i)=>{ const [x,y]=apply(H_,dst[i][0],dst[i][1]); return Math.hypot((x-src[i][0])*projSize.w,(y-src[i][1])*projSize.h); };
   let Hp=fitH(dst,src), err=0;
