@@ -748,13 +748,15 @@ const useBlank = () => !st.screenView || projOn();  // only blank when a project
 // table drawing only. They talk over a BroadcastChannel (instant, same computer). projCorners = where the table's four
 // corners sit in that window, as fractions of its width/height (set by Auto-align).
 const projCh = new BroadcastChannel('pt-display'); var projSize=null, projSeen=0;
-projCh.onmessage=e=>{ const d=e.data||{}; if(d.hello){ const was=!!projSize, a=st.projAlignSize; projSize={w:d.w,h:d.h,fs:d.fs}; projSeen=Date.now(); if(!was) buildPanel(); projSend();
-    if(st.projWin && a && (Math.abs(a.w-d.w)>4 || Math.abs(a.h-d.h)>4) && Date.now()-(projSizeWarned||0)>20000){ projSizeWarned=Date.now(); toast(`Projector window is ${d.w}×${d.h}, but it was aligned at ${a.w}×${a.h} — make it full screen, or run Auto-align again`); } } if(d.ack&&projAcks[d.ack]) { projAcks[d.ack](); delete projAcks[d.ack]; } };
+projCh.onmessage=e=>{ const d=e.data||{}; if(d.hello){ const was=!!projSize, a=st.projAlignSize; projSize={w:d.w,h:d.h,fs:d.fs,ox:d.ox||0,oy:d.oy||0}; projSeen=Date.now(); if(!was) buildPanel(); projSend();
+    if(st.projWin && a && st.projCorners && projPx().some(([x,y])=>x<-2||y<-2||x>d.w+2||y>d.h+2) && Date.now()-(projSizeWarned||0)>20000){ projSizeWarned=Date.now(); toast(`Part of the table is outside the projector window — make it full screen, or run Auto-align again`); } } if(d.ack&&projAcks[d.ack]) { projAcks[d.ack](); delete projAcks[d.ack]; } };
 const projAcks={};
 setInterval(()=>projCh.postMessage({ping:1}), 3000);
 const projOn = () => !!(st.projWin && projSize && Date.now()-projSeen<10000);
+function projPx(){ const a=st.projAlignSize||{w:projSize.w,h:projSize.h}, ax=a.ox!=null?a.ox:projSize.ox, ay=a.oy!=null?a.oy:(projSize.oy-(projSize.h-a.h));
+  return st.projCorners.map(([x,y])=>[x*a.w+ax-projSize.ox, y*a.h+ay-projSize.oy]); }
 function projSend(){ if(!projOn() || !st.projCorners) return; const keep=st.screenView; let ps; st.screenView=false; try{ ps=buildSVG(); } finally{ st.screenView=keep; }
-  const hm=homog(srcRect(), st.projCorners.map(([x,y])=>[x*projSize.w, y*projSize.h]));
+  const hm=homog(srcRect(), projPx());
   projCh.postMessage({frame:{svg:ps, w:W(), h:H(), S, hm}, pattern:null}); }
 // fit a homography to many point pairs (least squares, h33=1)
 function fitH(src,dst){ const N=[...Array(8)].map(()=>Array(8).fill(0)), r=Array(8).fill(0);
@@ -786,7 +788,7 @@ async function projAutoAlign(){
   for(;;){ const r=src.map((_,i)=>resid(Hp,i)); err=Math.sqrt(r.reduce((a,v)=>a+v*v,0)/r.length); const worst=r.indexOf(Math.max(...r));
     if(r[worst]<8 || src.length<=8) break; src.splice(worst,1); dst.splice(worst,1); Hp=fitH(dst,src); }
   if(err>12){ projCh.postMessage({pattern:null}); toast(`Auto-align couldn't get a clean fit (${err.toFixed(0)} px) — darken the room, keep clear of the table, and try again`); return {n:src.length, err, failed:true}; }
-  st.projAlignSize={w:projSize.w,h:projSize.h}; st.projCorners=[[0,0],[1,0],[1,1],[0,1]].map(([dx,dy])=>apply(Hp, st.flipX?1-dx:dx, st.flipY?1-dy:dy)); save();
+  st.projAlignSize={w:projSize.w,h:projSize.h,ox:projSize.ox,oy:projSize.oy}; st.projCorners=[[0,0],[1,0],[1,1],[0,1]].map(([dx,dy])=>apply(Hp, st.flipX?1-dx:dx, st.flipY?1-dy:dy)); save();
   projCh.postMessage({pattern:null}); render(); toast(`Projector aligned from ${src.length} dots (fit error ${err.toFixed(1)} px)`); buildPanel(); return {n:src.length, err}; }
 var projAligning=false, projSizeWarned=0, projNudgeCorner=0;
 // Nudge one corner of the projected table by hand, in table inches: "out" moves that corner's edges toward the rails.
@@ -806,7 +808,7 @@ async function projRefine(){
     if(best<30) return null; const thr=Math.max(20,best*.5); let n=0,sx=0,sy=0,sw=0;
     for(let y=Math.max(0,cy-r|0);y<Math.min(gh,cy+r);y++) for(let x=Math.max(0,cx-r|0);x<Math.min(gw,cx+r);x++){ const i=y*gw+x; if(d[i]>thr){ const g=d[i]-thr; n++; sx+=x*g; sy+=y*g; sw+=g; } }
     return n>=4 ? toTrue((sx/sw+.5)/gw,(sy/sw+.5)/gh) : null; };
-  const H0=homog([[0,0],[1,0],[1,1],[0,1]].map(([a,b])=>[st.flipX?1-a:a, st.flipY?1-b:b]), st.projCorners);   // table uv -> projector fraction
+  const H0=homog([[0,0],[1,0],[1,1],[0,1]].map(([a,b])=>[st.flipX?1-a:a, st.flipY?1-b:b]), projPx().map(([x,y])=>[x/projSize.w,y/projSize.h]));   // table uv -> projector fraction (current window)
   toast('Refining projector alignment — keep the table clear'); projAligning=true; const src=[], dst=[];
   projCh.postMessage({pattern:{bg:'#000'}}); await sleep(wait+600); let base=lum(rectify());
   for(const v of [.12,.37,.63,.88]) for(const u of [.07,.21,.36,.5,.64,.79,.93]){
@@ -818,7 +820,7 @@ async function projRefine(){
   let Hp=fitH(dst,src), err=0; const resid=i=>{ const [x,y]=apply(Hp,dst[i][0],dst[i][1]); return Math.hypot((x-src[i][0])*projSize.w,(y-src[i][1])*projSize.h); };
   for(;;){ const r=src.map((_,i)=>resid(i)); err=Math.sqrt(r.reduce((a,v)=>a+v*v,0)/r.length); const w=r.indexOf(Math.max(...r)); if(r[w]<5||src.length<=10) break; src.splice(w,1); dst.splice(w,1); Hp=fitH(dst,src); }
   const shift=Math.sqrt(dst.reduce((a,uv)=>{ const [x0,y0]=apply(H0,uv[0],uv[1]); return a+((x0-apply(Hp,uv[0],uv[1])[0])*projSize.w)**2+((y0-apply(Hp,uv[0],uv[1])[1])*projSize.h)**2; },0)/dst.length);
-  st.projCorners=[[0,0],[1,0],[1,1],[0,1]].map(([dx,dy])=>apply(Hp, st.flipX?1-dx:dx, st.flipY?1-dy:dy)); st.projAlignSize={w:projSize.w,h:projSize.h}; save(); render();
+  st.projCorners=[[0,0],[1,0],[1,1],[0,1]].map(([dx,dy])=>apply(Hp, st.flipX?1-dx:dx, st.flipY?1-dy:dy)); st.projAlignSize={w:projSize.w,h:projSize.h,ox:projSize.ox,oy:projSize.oy}; save(); render();
   toast(`Projector refined from ${src.length} dots (fit ${err.toFixed(1)} px, moved ${shift.toFixed(0)} px)`); return {n:src.length, err, shift}; }
 function blankGrab(){
   if(camState!=='on') return Promise.resolve(null);

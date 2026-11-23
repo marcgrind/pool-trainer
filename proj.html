@@ -16,7 +16,9 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;cursor:none}
 const ch=new BroadcastChannel('pt-display'), svg=document.getElementById('svg'), warp=document.getElementById('warp'),
       pat=document.getElementById('pat'), px=pat.getContext('2d'), msg=document.getElementById('m');
 let blank=false, last=null;
-const size=()=>({hello:1, w:innerWidth, h:innerHeight, fs:!!document.fullscreenElement});
+// where this page's content starts on the screen (window position + browser bar height), so the trainer can keep the
+// drawing on the table when the window changes size (e.g. full screen with or without the toolbar)
+const size=()=>({hello:1, w:innerWidth, h:innerHeight, fs:!!document.fullscreenElement, ox:screenX+(outerWidth-innerWidth)/2, oy:screenY+(outerHeight-innerHeight)});
 document.body.onclick=()=>{ document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); };
 addEventListener('resize',()=>{ ch.postMessage(size()); drawPattern(lastPat); });
 function show(){ warp.style.visibility = (blank||lastPat) ? 'hidden' : 'visible'; }
