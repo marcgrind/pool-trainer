@@ -375,7 +375,9 @@ function buildPanel(){
       <button data-act="lib">Back up / move setup</button></div>
     <div class="row"><button class="${st.screenView?'on':''}" data-act="screenView">No projector – show the table on this screen</button>
       <button class="${st.projWin?'on':''}" data-act="projWin" title="Show the table drawing in a second window on the projector screen (open proj.html there)">Projector window${st.projWin?(projSize?' · connected':' · waiting'):''}</button><button data-act="projAlign" title="Project dots and line the drawing up with the table automatically">Auto-align projector</button><button data-act="projRefine" title="Fine-tune the projector alignment with dots on the felt (run after Auto-align)">Fine-tune projector</button>
-      ${st.projCorners?`<button class="${pocketArrows?'on':''}" data-act="pocketArrows" title="Project an arrow into every pocket to check the alignment">Pocket arrows</button><span class="tip">Nudge projected corner:</span>${[1,2,3,4].map(i=>`<button class="${projNudgeCorner===i-1?'on':''}" data-act="projCorner${i}">${i}</button>`).join('')}<button data-act="projLenOut" title="Move this corner's end line out toward the end rail">End line out</button><button data-act="projLenIn">End line in</button><button data-act="projWidOut" title="Move this corner's side line out toward the side rail">Side line out</button><button data-act="projWidIn">Side line in</button><span class="tip">¼" per click (hold Shift for 1")</span>`:''}
+      ${st.projCorners?`<button class="${pocketArrows?'on':''}" data-act="pocketArrows" title="Project an arrow into every pocket to check the alignment">Pocket arrows</button><span class="tip">Nudge projected corner:</span>${[1,2,3,4].map(i=>`<button class="${projNudgeCorner===i-1?'on':''}" data-act="projCorner${i}">${i}</button>`).join('')}<button class="${projNudgeCorner===4?'on':''}" data-act="projSideS1">S1</button><button class="${projNudgeCorner===5?'on':''}" data-act="projSideS2">S2</button>
+      ${projNudgeCorner<4?`<button data-act="projLenOut" title="Move this corner's end line out toward the end rail">End line out</button><button data-act="projLenIn">End line in</button><button data-act="projWidOut" title="Move this corner's side line out toward the side rail">Side line out</button><button data-act="projWidIn">Side line in</button>`
+        :`<button data-act="projLenIn" title="Slide this side pocket toward the corner 1/4 end">Toward 1–4 end</button><button data-act="projLenOut" title="Slide this side pocket toward the corner 2/3 end">Toward 2–3 end</button><button data-act="projWidOut" title="Move it out toward its rail">Out to rail</button><button data-act="projWidIn">In from rail</button>`}<span class="tip">¼" per click (hold Shift for 1")</span>`:''}
       <button class="${emptyRef?'on':''}" data-act="emptyRef">${emptyRef?'Empty table captured':'Capture empty table'}</button>
       <button class="${st.sound!==false?'on':''}" data-act="sound">Sounds</button>
       <button class="${st.speak===true?'on':''}" data-act="speak">Speak feedback</button>
@@ -446,6 +448,7 @@ panel.addEventListener('click', e=>{
     case 'projAlign': projAutoAlign().then(r=>{ if(r&&!r.failed) projRefine(); }); return;
     case 'projRefine': projRefine(); return;
     case 'pocketArrows': pocketArrows=!pocketArrows; buildPanel(); render(); return;
+    case 'projSideS1': projNudgeCorner=4; buildPanel(); return; case 'projSideS2': projNudgeCorner=5; buildPanel(); return;
     case 'projCorner1': case 'projCorner2': case 'projCorner3': case 'projCorner4': projNudgeCorner=+a.slice(-1)-1; buildPanel(); return;
     case 'projLenOut': case 'projLenIn': case 'projWidOut': case 'projWidIn': projNudge(/Len/.test(a), (/Out/.test(a)?1:-1)*(window.event&&window.event.shiftKey?1:.25)); return;
     case 'camFlip': st.camView=((st.camView||0)+1)%4; save(); buildPanel(); drawOv(); return;
@@ -499,7 +502,7 @@ panel.addEventListener('input', e=>{
 });
 
 // ---------- library modal ----------
-const SETTING_KEYS=['size','screenView','cam','camView','projWin','projCorners','projDelay','projAlignSize','best','sound','speak','endMount','corners','outline','title'];
+const SETTING_KEYS=['size','screenView','cam','camView','projWin','projCorners','projDelay','projAlignSize','projSide','best','sound','speak','endMount','corners','outline','title'];
 function openLib(){ const settings={}; SETTING_KEYS.forEach(k=>{ if(st[k]!==undefined) settings[k]=st[k]; }); $('json').value=JSON.stringify({drills:st.drills, settings},null,1); $('modal').style.display='flex'; }
 function parseLib(){ try { const j=JSON.parse($('json').value); const arr=Array.isArray(j)?j:j.drills; if(!Array.isArray(arr)) throw 0; return arr.filter(x=>x&&Array.isArray(x.items)); } catch(e){ toast('That is not a valid drill library'); return null; } }
 $('modal').addEventListener('click', e=>{
@@ -765,8 +768,16 @@ const projOn = () => !!(st.projWin && projSize && Date.now()-projSeen<10000);
 function projPx(){ const a=st.projAlignSize||{w:projSize.w,h:projSize.h}, ax=a.ox!=null?a.ox:projSize.ox, ay=a.oy!=null?a.oy:(projSize.oy+(projSize.h-a.h));   // older alignments: assume the bar that was showing sat above the content
   return st.projCorners.map(([x,y])=>[x*a.w+ax-projSize.ox, y*a.h+ay-projSize.oy]); }
 function projSend(){ if(!projOn() || !st.projCorners) return; const keep=st.screenView; let ps; st.screenView=false; try{ ps=buildSVG(); } finally{ st.screenView=keep; }
-  const hm=homog(srcRect(), projPx());
-  projCh.postMessage({frame:{svg:ps, w:W(), h:H(), S, hm}, pattern:null}); }
+  const full=homog(srcRect(), projPx()), sp=st.projSide||{};
+  if(!sp.S1 && !sp.S2){ projCh.postMessage({frame:{svg:ps, w:W(), h:H(), S, hm:full}, pattern:null}); return; }
+  // side pockets nudged: warp the two halves of the table separately so the middle can bend to meet S1 and S2
+  const sideP=(name,v0)=>{ const [du,dv]=sp[name]||[0,0], u=.5+du/W(), v=v0+(v0===0?-1:1)*dv/H(); return apply(full, fx(u)*S, fy(v)*S); };
+  const p=projPx(), m1=sideP('S1',0), m2=sideP('S2',1), X=W()*S, Y=H()*S;
+  const A1=[fx(0)*S,fy(0)*S], B1=[fx(.5)*S,fy(0)*S], A2=[fx(0)*S,fy(1)*S], B2=[fx(.5)*S,fy(1)*S];   // drawing points: corner (0,0), S1, corner (0,1), S2
+  const pAt=(u,v)=>apply(full, fx(u)*S, fy(v)*S);
+  const left = homog([A1,B1,B2,A2],[pAt(0,0),m1,m2,pAt(0,1)]), right=homog([B1,[fx(1)*S,fy(0)*S],[fx(1)*S,fy(1)*S],B2],[m1,pAt(1,0),pAt(1,1),m2]);
+  const lx=Math.min(A1[0],B1[0]);   // left layer covers drawing x from the corner-1 end to the middle
+  projCh.postMessage({frame:{svg:ps, w:W(), h:H(), S, hm:full, layers:[{hm:left, clip: lx===0?'inset(0 50% 0 0)':'inset(0 0 0 50%)'},{hm:right, clip: lx===0?'inset(0 0 0 50%)':'inset(0 50% 0 0)'}]}, pattern:null}); }
 // fit a homography to many point pairs (least squares, h33=1)
 function fitH(src,dst){ const N=[...Array(8)].map(()=>Array(8).fill(0)), r=Array(8).fill(0);
   src.forEach(([x,y],i)=>{ const [u,v]=dst[i]; [[x,y,1,0,0,0,-u*x,-u*y,u],[0,0,0,x,y,1,-v*x,-v*y,v]].forEach(row=>{ for(let a=0;a<8;a++){ r[a]+=row[a]*row[8]; for(let b=0;b<8;b++) N[a][b]+=row[a]*row[b]; } }); });
@@ -797,12 +808,14 @@ async function projAutoAlign(){
   for(;;){ const r=src.map((_,i)=>resid(Hp,i)); err=Math.sqrt(r.reduce((a,v)=>a+v*v,0)/r.length); const worst=r.indexOf(Math.max(...r));
     if(r[worst]<8 || src.length<=8) break; src.splice(worst,1); dst.splice(worst,1); Hp=fitH(dst,src); }
   if(err>12){ projCh.postMessage({pattern:null}); toast(`Auto-align couldn't get a clean fit (${err.toFixed(0)} px) — darken the room, keep clear of the table, and try again`); return {n:src.length, err, failed:true}; }
-  st.projAlignSize={w:projSize.w,h:projSize.h,ox:projSize.ox,oy:projSize.oy}; st.projCorners=[[0,0],[1,0],[1,1],[0,1]].map(([dx,dy])=>apply(Hp, st.flipX?1-dx:dx, st.flipY?1-dy:dy)); save();
+  st.projSide=null; st.projAlignSize={w:projSize.w,h:projSize.h,ox:projSize.ox,oy:projSize.oy}; st.projCorners=[[0,0],[1,0],[1,1],[0,1]].map(([dx,dy])=>apply(Hp, st.flipX?1-dx:dx, st.flipY?1-dy:dy)); save();
   projCh.postMessage({pattern:null}); render(); toast(`Projector aligned from ${src.length} dots (fit error ${err.toFixed(1)} px)`); buildPanel(); return {n:src.length, err}; }
 var projAligning=false, projSizeWarned=0, projNudgeCorner=0;
 // Nudge one corner of the projected table by hand, in table inches: "out" moves that corner's edges toward the rails.
 // Corners are numbered like the camera corners (1–4).
-function projNudge(alongLength, inches){ if(!st.projCorners) return; const U=[[0,0],[1,0],[1,1],[0,1]], tp=U.map(([a,b])=>[st.flipX?1-a:a, st.flipY?1-b:b]);
+function projSideNudge(along, inches){ const name=projNudgeCorner===4?'S1':'S2'; st.projSide=st.projSide||{}; const c=st.projSide[name]||[0,0];
+  if(along) c[0]+=inches; else c[1]+=inches; st.projSide[name]=c; save(); render(); }
+function projNudge(alongLength, inches){ if(!st.projCorners) return; if(projNudgeCorner>=4) return projSideNudge(alongLength, inches); const U=[[0,0],[1,0],[1,1],[0,1]], tp=U.map(([a,b])=>[st.flipX?1-a:a, st.flipY?1-b:b]);
   const H0=homog(tp, st.projCorners), [tu,tv]=U[projNudgeCorner], j=tp.findIndex(([a,b])=>a===tu&&b===tv);
   const du = alongLength ? Math.sign(tu-.5)*inches/W() : 0, dv = alongLength ? 0 : Math.sign(tv-.5)*inches/H();
   st.projCorners[j]=apply(H0, tu+du, tv+dv); save(); render(); }

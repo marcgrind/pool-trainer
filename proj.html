@@ -2,12 +2,12 @@
 <html><head><meta charset="utf-8"><title>Pool Trainer — Projector</title>
 <style>
 html,body{margin:0;height:100%;background:#000;overflow:hidden;cursor:none}
-#warp{position:absolute;left:0;top:0;transform-origin:0 0}
+#warp,#warp2{position:absolute;left:0;top:0;transform-origin:0 0}
 #pat{position:fixed;inset:0;width:100%;height:100%}
 #m{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);color:#777;font:22px system-ui;text-align:center}
 </style></head>
 <body>
-<div id="warp"><svg id="svg" xmlns="http://www.w3.org/2000/svg"></svg></div>
+<div id="warp"><svg id="svg" xmlns="http://www.w3.org/2000/svg"></svg></div><div id="warp2" class="w2"><svg id="svg2" xmlns="http://www.w3.org/2000/svg"></svg></div>
 <canvas id="pat"></canvas>
 <div id="m">Pool Trainer — projector screen<br><small>Click once for full screen. The trainer window controls this screen.</small></div>
 <script>
@@ -21,7 +21,9 @@ let blank=false, last=null;
 const size=()=>({hello:1, w:innerWidth, h:innerHeight, fs:!!document.fullscreenElement, ox:screenX+(outerWidth-innerWidth)/2, oy:screenY+(outerHeight-innerHeight)});
 document.body.onclick=()=>{ document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); };
 addEventListener('resize',()=>{ ch.postMessage(size()); drawPattern(lastPat); });
-function show(){ warp.style.visibility = (blank||lastPat) ? 'hidden' : 'visible'; }
+const warp2=document.getElementById('warp2'), svg2=document.getElementById('svg2'); let twoLayers=false;
+function show(){ const v=(blank||lastPat)?'hidden':'visible'; warp.style.visibility=v; warp2.style.visibility=twoLayers?v:'hidden'; }
+const mx=m=>`matrix3d(${m[0]},${m[3]},0,${m[6]},${m[1]},${m[4]},0,${m[7]},0,0,1,0,${m[2]},${m[5]},0,1)`;
 let lastPat=null;
 function drawPattern(p){ pat.width=innerWidth; pat.height=innerHeight; px.clearRect(0,0,pat.width,pat.height);
   if(!p) return; px.fillStyle=p.bg||'#000'; px.fillRect(0,0,pat.width,pat.height);
@@ -31,8 +33,11 @@ ch.onmessage=e=>{ const d=e.data||{}; msg.style.display='none';
   if(d.ping) ch.postMessage(size());
   if('pattern' in d){ lastPat=d.pattern; drawPattern(lastPat); show(); }
   if(d.frame){ const f=d.frame; last=f; svg.setAttribute('viewBox',`0 0 ${f.w} ${f.h}`); svg.setAttribute('width',f.w*f.S); svg.setAttribute('height',f.h*f.S);
-    svg.innerHTML=f.svg; const m=f.hm.map(v=>v); // homography from table drawing (px) to this window (px)
-    warp.style.transform=`matrix3d(${m[0]},${m[3]},0,${m[6]},${m[1]},${m[4]},0,${m[7]},0,0,1,0,${m[2]},${m[5]},0,1)`; show(); }
+    svg.innerHTML=f.svg; twoLayers=!!(f.layers&&f.layers.length===2);   // homography from table drawing (px) to this window (px)
+    if(twoLayers){ svg2.setAttribute('viewBox',`0 0 ${f.w} ${f.h}`); svg2.setAttribute('width',f.w*f.S); svg2.setAttribute('height',f.h*f.S); svg2.innerHTML=f.svg;
+      warp.style.transform=mx(f.layers[0].hm); warp.style.clipPath=f.layers[0].clip; warp2.style.transform=mx(f.layers[1].hm); warp2.style.clipPath=f.layers[1].clip; }
+    else { warp.style.transform=mx(f.hm); warp.style.clipPath='none'; }
+    show(); }
   if('blank' in d){ blank=!!d.blank; show(); }
   if(d.id) requestAnimationFrame(()=>requestAnimationFrame(()=>ch.postMessage({ack:d.id, t:Date.now()}))); };
 ch.postMessage(size());
