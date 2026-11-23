@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Projector test</title>
+<style>html,body{margin:0;height:100%;background:#000;color:#666;font:20px system-ui;cursor:none}#m{position:fixed;left:20px;bottom:20px}</style></head>
+<body><div id="m">Projector test page — waiting for the trainer… (click anywhere for full screen)</div>
+<script>
+// Test page for the projector screen: the trainer window (same browser) tells it what colour to show,
+// so we can time how long AirPlay takes to put a change on the table.
+const ch=new BroadcastChannel('pt-display');
+document.body.onclick=()=>document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen();
+ch.onmessage=e=>{ const d=e.data||{};
+  if(d.c){ document.body.style.background=d.c; document.getElementById('m').style.display='none';
+    requestAnimationFrame(()=>requestAnimationFrame(()=>ch.postMessage({ack:d.id, t:Date.now()}))); }
+  if(d.ping) ch.postMessage({pong:1, w:innerWidth, h:innerHeight, fs:!!document.fullscreenElement}); };
+ch.postMessage({hello:1});
+</script></body></html>
