@@ -888,7 +888,11 @@ function guideCue(){
 }
 function placeRing(it){ if(!placed) return ''; const ok=placed[it.u.toFixed(4)+','+it.v.toFixed(4)]; if(ok==null) return '';
   return `<circle cx="${fx(it.u)}" cy="${fy(it.v)}" r="${R+.9}" fill="none" stroke="${ok?'#00ff88':'#ff3b3b'}" stroke-width=".3" ${ok?'':'stroke-dasharray=".6 .5"'}/>`; }
-function placementSVG(){ return (camState==='on' && (shotState==='placing'||shotState==='armed')) ? placeItems().map(placeRing).join('')+guideSVG() : ''; }
+// Crosshairs through each ball spot, drawn only on the felt around the ball (from just outside the ball to 5" out). With a
+// projector the light that falls on a ball lands off-centre, so line the ball up between the four line ends instead.
+function crossSVG(it){ const x=fx(it.u), y=fy(it.v), a=R+.5, b=R+5, ok=placed&&placed[it.u.toFixed(4)+','+it.v.toFixed(4)], c=ok?'#00ff88':'#ffffff';
+  return `<g stroke="${c}" stroke-width=".22" stroke-linecap="round"><line x1="${x-b}" y1="${y}" x2="${x-a}" y2="${y}"/><line x1="${x+a}" y1="${y}" x2="${x+b}" y2="${y}"/><line x1="${x}" y1="${y-b}" x2="${x}" y2="${y-a}"/><line x1="${x}" y1="${y+a}" x2="${x}" y2="${y+b}"/></g>`; }
+function placementSVG(){ return (camState==='on' && (shotState==='placing'||shotState==='armed')) ? placeItems().map(it=>placeRing(it)+((st.projWin||!st.screenView)&&shotState==='placing'?crossSVG(it):'')).join('')+guideSVG() : ''; }
 function arm(){ lastShot=null; showFeedback([]); recEnd(false); recBegin(); shotState='armed'; startTrack(); render(); setTimeout(()=>{ armedRef=rectify(); learnColors(); }, 400); }
 function enterPlacing(){ shotState='placing'; placed=null; armedRef=null; needCheck=true; }
 
