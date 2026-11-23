@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Pool Trainer — Projector</title>
+<style>
+html,body{margin:0;height:100%;background:#000;overflow:hidden;cursor:none}
+#warp{position:absolute;left:0;top:0;transform-origin:0 0}
+#pat{position:fixed;inset:0;width:100%;height:100%}
+#m{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);color:#777;font:22px system-ui;text-align:center}
+</style></head>
+<body>
+<div id="warp"><svg id="svg" xmlns="http://www.w3.org/2000/svg"></svg></div>
+<canvas id="pat"></canvas>
+<div id="m">Pool Trainer — projector screen<br><small>Click once for full screen. The trainer window controls this screen.</small></div>
+<script>
+// The projector screen. The trainer (another window of this browser) sends it the table drawing and the
+// warp that lines it up with the real table, plus calibration patterns. It only draws what it is told.
+const ch=new BroadcastChannel('pt-display'), svg=document.getElementById('svg'), warp=document.getElementById('warp'),
+      pat=document.getElementById('pat'), px=pat.getContext('2d'), msg=document.getElementById('m');
+let blank=false, last=null;
+const size=()=>({hello:1, w:innerWidth, h:innerHeight, fs:!!document.fullscreenElement});
+document.body.onclick=()=>{ document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); };
+addEventListener('resize',()=>{ ch.postMessage(size()); drawPattern(lastPat); });
+function show(){ warp.style.visibility = (blank||lastPat) ? 'hidden' : 'visible'; }
+let lastPat=null;
+function drawPattern(p){ pat.width=innerWidth; pat.height=innerHeight; px.clearRect(0,0,pat.width,pat.height);
+  if(!p) return; px.fillStyle=p.bg||'#000'; px.fillRect(0,0,pat.width,pat.height);
+  (p.dots||[]).forEach(([x,y,r,c])=>{ px.fillStyle=c||'#fff'; px.beginPath(); px.arc(x*innerWidth,y*innerHeight,r||14,0,7); px.fill(); });
+  (p.rects||[]).forEach(([x,y,w,h,c])=>{ px.fillStyle=c||'#fff'; px.fillRect(x*innerWidth,y*innerHeight,w*innerWidth,h*innerHeight); }); }
+ch.onmessage=e=>{ const d=e.data||{}; msg.style.display='none';
+  if(d.ping) ch.postMessage(size());
+  if('pattern' in d){ lastPat=d.pattern; drawPattern(lastPat); show(); }
+  if(d.frame){ const f=d.frame; last=f; svg.setAttribute('viewBox',`0 0 ${f.w} ${f.h}`); svg.setAttribute('width',f.w*f.S); svg.setAttribute('height',f.h*f.S);
+    svg.innerHTML=f.svg; const m=f.hm.map(v=>v); // homography from table drawing (px) to this window (px)
+    warp.style.transform=`matrix3d(${m[0]},${m[3]},0,${m[6]},${m[1]},${m[4]},0,${m[7]},0,0,1,0,${m[2]},${m[5]},0,1)`; show(); }
+  if('blank' in d){ blank=!!d.blank; show(); }
+  if(d.id) requestAnimationFrame(()=>requestAnimationFrame(()=>ch.postMessage({ack:d.id, t:Date.now()}))); };
+ch.postMessage(size());
+</script></body></html>
