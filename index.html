@@ -753,7 +753,7 @@ projCh.onmessage=e=>{ const d=e.data||{}; if(d.hello){ const was=!!projSize, a=s
 const projAcks={};
 setInterval(()=>projCh.postMessage({ping:1}), 3000);
 const projOn = () => !!(st.projWin && projSize && Date.now()-projSeen<10000);
-function projPx(){ const a=st.projAlignSize||{w:projSize.w,h:projSize.h}, ax=a.ox!=null?a.ox:projSize.ox, ay=a.oy!=null?a.oy:(projSize.oy-(projSize.h-a.h));
+function projPx(){ const a=st.projAlignSize||{w:projSize.w,h:projSize.h}, ax=a.ox!=null?a.ox:projSize.ox, ay=a.oy!=null?a.oy:(projSize.oy+(projSize.h-a.h));   // older alignments: assume the bar that was showing sat above the content
   return st.projCorners.map(([x,y])=>[x*a.w+ax-projSize.ox, y*a.h+ay-projSize.oy]); }
 function projSend(){ if(!projOn() || !st.projCorners) return; const keep=st.screenView; let ps; st.screenView=false; try{ ps=buildSVG(); } finally{ st.screenView=keep; }
   const hm=homog(srcRect(), projPx());
