@@ -772,7 +772,13 @@ async function projAutoAlign(){
     projCh.postMessage({pattern:{bg:'#000'}}); await sleep(wait*.8); base=lum(rectify()); }
   projAligning=false;
   if(src.length<6){ projCh.postMessage({pattern:null}); toast(`Auto-align found only ${src.length} dots on the table — darken the room or aim the projector at the table`); return; }
-  const Hp=fitH(dst,src), err=Math.sqrt(dst.reduce((a,uv,i)=>{ const [x,y]=apply(Hp,uv[0],uv[1]); return a+((x-src[i][0])*projSize.w)**2+((y-src[i][1])*projSize.h)**2; },0)/src.length);
+  window.__projAlignPts={src:src.slice(),dst:dst.slice(),w:projSize.w,h:projSize.h};
+  // drop false detections (a reflection, someone moving, a light): refit without the worst point until the fit is tight
+  const resid=(H_,i)=>{ const [x,y]=apply(H_,dst[i][0],dst[i][1]); return Math.hypot((x-src[i][0])*projSize.w,(y-src[i][1])*projSize.h); };
+  let Hp=fitH(dst,src), err=0;
+  for(;;){ const r=src.map((_,i)=>resid(Hp,i)); err=Math.sqrt(r.reduce((a,v)=>a+v*v,0)/r.length); const worst=r.indexOf(Math.max(...r));
+    if(r[worst]<8 || src.length<=8) break; src.splice(worst,1); dst.splice(worst,1); Hp=fitH(dst,src); }
+  if(err>12){ projCh.postMessage({pattern:null}); toast(`Auto-align couldn't get a clean fit (${err.toFixed(0)} px) — darken the room, keep clear of the table, and try again`); return {n:src.length, err, failed:true}; }
   st.projAlignSize={w:projSize.w,h:projSize.h}; st.projCorners=[[0,0],[1,0],[1,1],[0,1]].map(([dx,dy])=>apply(Hp, st.flipX?1-dx:dx, st.flipY?1-dy:dy)); save();
   projCh.postMessage({pattern:null}); render(); toast(`Projector aligned from ${src.length} dots (fit error ${err.toFixed(1)} px)`); buildPanel(); return {n:src.length, err}; }
 var projAligning=false, projSizeWarned=0;
