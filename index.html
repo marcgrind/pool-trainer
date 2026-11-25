@@ -394,6 +394,7 @@ function buildPanel(){
     <div class="tip">1) Start camera (allow access). 2) Set camera corners: click the four big numbers 1→4 in the video, in order — with a projector they're projected on the table; with no projector, click the cushion corners that match the numbered corners in the diagram on this screen (1 = head end, your left). Camera at the far end of the table, not overhead? Enter its lens height above the felt so ball positions are corrected for the angle. With the table empty, press Capture empty table — that lets it check every ball's spot (you'll hear a tick per ball and a ding when all are set). 3) Put the cue ball anywhere and press Test detect — a cyan ring should land on it on the table. Raise "White ≥" if lit felt or the rails get picked up, lower it if the cue ball is missed. 4) Turn on Auto-score, go to Play.</div>`;
   }
   if (mode==='play'){
+    h+=`<div class="row"><span class="lbl">Target practice</span><select data-act="tpType">${Object.keys(TP_TYPES).map(k=>`<option ${st.tpType===k?'selected':''}>${k}</option>`).join('')}</select><button class="${drill().tp?'on':''}" data-act="tpGo" title="Generate a new shot of this kind (a new one appears after every shot)">${drill().tp?'New shot':'Start'}</button><span class="tip">Endless generated shots with a cue-ball target</span></div>`;
     h+=`<div class="row"><span class="lbl">Games</span>${Object.entries(GAMES).map(([k,g])=>`<button class="${game&&game.type===k?'on':''}" data-act="game" data-v="${k}">${g.title}</button>`).join('')}${game?'<button data-act="quitGame">Quit game</button>':''}</div>`;
     if (game) h+=`<div class="tip">${GAMES[game.type].help}</div>`;
     h+=`<div class="row"><button class="${st.voice?'on':''}" data-act="voice">Voice commands</button><button class="${st.record?'on':''}" data-act="record">Record shots</button><button class="${st.aids!==false?'on':''}" data-act="aids">Shot guides</button><button class="${adviceOn&&!runout?'on':''}" data-act="advice" title="Find all balls and suggest the best shots (O)">Shot options</button><button class="${runout?'on':''}" data-act="runout" title="Plan each shot and where the cue ball should land for the next one">Run-out practice</button><button class="${bar?'on':''}" data-act="bar" title="Two players, regular 15-ball 8-ball: keeps turns, groups and the winner">Bar pool (2 players)</button><button class="${coach.on?'on':''}" data-act="coach" title="Picks drills for your weakest skills and levels you up">Coach</button><button data-act="progress">Progress</button><span class="tip">After a shot say "yes" or "again" (or press <kbd>Enter</kbd>) to set it up again · "next" · "back" · "score"</span></div>`;
@@ -440,6 +441,7 @@ panel.addEventListener('click', e=>{
     case 'outline': st.outline=!st.outline; break; case 'title': st.title=!st.title; break;
     case 'lib': openLib(); return;
     case 'game': startGame(b.dataset.v); return;
+    case 'tpGo': game=null; tpNew(st.tpType||Object.keys(TP_TYPES)[0]); return;
     case 'quitGame': game=null; result=null; buildPanel(); render(); return;
     case 'usbFlip': st.usbFlip=!st.usbFlip; break;
     case 'usbExport': exportUSB(); return;
@@ -480,6 +482,7 @@ panel.addEventListener('click', e=>{
 panel.addEventListener('change', e=>{
   const a=e.target.dataset.act, v=e.target.value;
   if(a==='pick') go(+v);
+  else if(a==='tpType'){ st.tpType=v; save(); game=null; tpNew(v); }
   else if(a==='ballNum'){ ballNum=+v; tool='ball'; buildPanel(); }
   else if(a==='size'){ st.size=v; save(); render(); }
   else if(a==='rackN'){ st.rackN=+v; save(); }
@@ -873,7 +876,7 @@ const sndScore = pts => pts>=3 ? [0,.12,.24].forEach((d,i)=>tone([1046.5,1318.5,
 // Which balls the player has to set up, and the spot that tells us a shot happened.
 function placeItems(){ const items = game ? (game.over?[]:game.items) : drill().items; return items.filter(it=>it.t==='ball' && it.n>=0); }
 function watchSpot(){ const b=placeItems(); const cue=b.find(it=>it.n===0);
-  if(cue) return {u:cue.u,v:cue.v,cue:true}; if(game&&game.target&&!game.over) return {u:.25,v:.5,cue:true}; return b[0]?{u:b[0].u,v:b[0].v,cue:false}:null; }
+  if(cue) return {u:cue.u,v:cue.v,cue:true}; if(game&&game.target&&!game.over) return {u:.25,v:.5,cue:true}; if(game&&!game.over&&game.type==='darts') return {u:.18,v:.5,cue:true}; if(game&&!game.over&&game.type==='sea') return {u:.12,v:.5,cue:true}; return b[0]?{u:b[0].u,v:b[0].v,cue:false}:null; }
 var placed=null, armedRef=null, needCheck=true;
 function checkPlacement(A){
   const balls=placeItems(); if(!balls.length){ placed=null; return true; }
@@ -1067,6 +1070,9 @@ const GAMES={
   position:{title:'Position challenge', help:'10 rounds, ball in hand. Pocket the ball along the arrow AND land the cue ball in the green zone. Then press <kbd>→</kbd> if the ball went in or <kbd>←</kbd> if you missed (the camera judges the zone; without one, press <kbd>2</kbd> made+zone, <kbd>1</kbd> made only, <kbd>0</kbd> miss).'},
   duel:{title:'Target duel (2 players)', help:`Players alternate Bullseye shots; first to 21 wins. ${MANUAL}`},
   eo:{title:'Equal Offense', help:'10 innings. Rack all 15, break (or take ball in hand), then call and pocket balls in any order. <kbd>→</kbd> each ball made, <kbd>←</kbd> miss ends the inning. Max 20 per inning, 200 per game. Re-rack whenever you need to.'},
+  darts:{title:'Darts 301 (2 players)', help:'A dartboard on the table. Shoot the cue ball from the start ring and stop it on the board: 3 throws a turn, the board scores like real darts (bull 50, outer bull 25, triple and double rings). Count down from 301 to exactly 0; going below 0 is a bust.'},
+  golf:{title:'Pool golf (9 holes)', help:'Stop the cue ball in the cup. Each stroke you play from where the cue ball stopped; holes get longer as you go. Par 3 each, max 6 strokes. Lowest total wins.'},
+  sea:{title:'Sea battle', help:'A fleet (one 3-cell, two 2-cell and one 1-cell ship) hides on a 6 × 4 grid. Shoot from the start ring and stop the cue ball in a cell to fire there. Sink the whole fleet in as few shots as you can.'},
   ghost:{title:'Beat the ghost', help:'5 random 9-ball racks, ball in hand. Shoot them in order: <kbd>→</kbd> ball made, <kbd>←</kbd> miss (ends the rack). Run all 9 for a 3-ball bonus.'},
 };
 function randSpot(u0=.12,u1=.88,v0=.18,v1=.82){ return [rnd(u0,u1),rnd(v0,v1)]; }
@@ -1093,6 +1099,20 @@ function newRound(){
     const items=[], d=BALL_D, fx0=.75*W(), fy0=.5*H(); let n=1;
     for(let row=0;row<5;row++) for(let k=0;k<=row;k++){ const x=fx0+row*d*.866, y=fy0+(k-row/2)*d; items.push({t:'ball',u:x/W(),v:y/H(),n:-1}); }
     g.inn=0; g.items=items.concat([TX(.75,.25,'rack here',1.5)]);
+  } else if(g.type==='darts'){
+    g.target=null; g.scores=g.scores&&g.dLeft?g.scores:[301,301]; if(!g.dLeft){ g.scores=[301,301]; g.dLeft=3; g.turnStart=301; }
+    g.items=[{t:'target',u:.18,v:.5,r:1.6},TX(.18,.62,'start',1.3)];
+  } else if(g.type==='golf'){
+    if(!g.hole){ g.hole=1; g.strokes=0; g.card=[]; }
+    if(g.strokes===0){ let c; do { c=randSpot(.3,.92,.15,.85); } while(Math.hypot((c[0]-.15)*W(),(c[1]-.5)*H()) < 22+g.hole*5);
+      g.cup={u:c[0],v:c[1],r:2.4}; g.lie=[.15,.5]; }
+    g.target=null; g.items=[B(g.lie[0],g.lie[1],0)];
+  } else if(g.type==='sea'){
+    if(!g.ships){ const cols=6, rows=4, occ=new Set(); g.ships=[];
+      for(const len of [3,2,2,1]){ for(let t=0;t<500;t++){ const hz=Math.random()<.5, c=(Math.random()*(hz?cols-len+1:cols))|0, r=(Math.random()*(hz?rows:rows-len+1))|0, cells=[];
+          for(let k=0;k<len;k++) cells.push(hz?[c+k,r]:[c,r+k]); if(cells.some(([a,b])=>occ.has(a+','+b))) continue; cells.forEach(([a,b])=>occ.add(a+','+b)); g.ships.push({cells,hit:0}); break; } }
+      g.shots=[]; g.score=0; }
+    g.target=null; g.items=[{t:'target',u:.12,v:.5,r:1.6},TX(.12,.62,'start',1.3)];
   } else if(g.type==='ghost'){
     const pts=[]; g.balls=[];
     for(let n=1;n<=9;n++){ let p,t=0; do{ p=randSpot(.06,.94,.1,.9); t++; } while(t<400 && pts.some(q=>Math.hypot((q[0]-p[0])*W(),(q[1]-p[1])*H())<4)); pts.push(p); g.balls.push(B(p[0],p[1],n)); }
@@ -1107,9 +1127,35 @@ function hud(){
   if(g.type==='duel') return `${t} · P1 ${g.scores[0]} · P2 ${g.scores[1]} · Player ${g.player+1} to shoot`;
   if(g.type==='eo') return `${t} · inning ${Math.min(g.round,10)}/10 · this inning ${g.inn} · total ${g.score}${best!=null?` · best ${best}`:''}`;
   if(g.type==='ghost') return `${t} · rack ${Math.min(g.rack,5)}/5 · balls ${g.score}${best!=null?` · best ${best}`:''}`;
+  if(g.type==='darts') return `Darts 301 · P1 ${g.scores[0]} · P2 ${g.scores[1]} · Player ${g.player+1}, ${g.dLeft} throw${g.dLeft===1?'':'s'} left`;
+  if(g.type==='golf') return `Pool golf · hole ${Math.min(g.hole,9)}/9 · stroke ${g.strokes+1} · total ${g.card.reduce((a,b)=>a+b,0)} (par ${(g.hole-1)*3})${best!=null?` · best ${-best}`:''}`;
+  if(g.type==='sea'){ const left=g.ships.filter(sh=>sh.hit<sh.cells.length).length; return `Sea battle · shots ${g.score} · ships left ${left}/4${best!=null?` · best ${-best}`:''}`; }
 }
+const DART_NUMS=[20,1,18,4,13,6,10,15,2,17,3,19,7,16,8,11,14,9,12,5], DART={u:.62,v:.5,R:17};
+function dartScore(x,y){ const cx=DART.u*W(), cy=DART.v*H(), dx=x-cx, dy=y-cy, r=Math.hypot(dx,dy), R0=DART.R;
+  if(r<=1.6) return [50,'Bull 50']; if(r<=3.3) return [25,'Outer bull 25']; if(r>R0) return [0,'Off the board'];
+  let a=Math.atan2(dx,-dy)*180/Math.PI; a=(a+360+9)%360; const n=DART_NUMS[Math.floor(a/18)];
+  if(r>=R0*.56 && r<=R0*.66) return [n*3,`Triple ${n} = ${n*3}`]; if(r>=R0*.9) return [n*2,`Double ${n} = ${n*2}`]; return [n,String(n)]; }
+function dartSVG(){ const cx=fx(DART.u), cy=fy(DART.v), R0=DART.R; let s='';
+  for(let i=0;i<20;i++){ const a0=(i*18-9)*Math.PI/180, a1=(i*18+9)*Math.PI/180, P=(r,a)=>`${cx+r*Math.sin(a)},${cy-r*Math.cos(a)}`;
+    const ring=(r0,r1,c)=>`<path d="M${P(r0,a0)} L${P(r1,a0)} A${r1},${r1} 0 0 1 ${P(r1,a1)} L${P(r0,a1)} A${r0},${r0} 0 0 0 ${P(r0,a0)}z" fill="${c}" stroke="#fff" stroke-width=".08"/>`;
+    const dark=i%2===0; s+=ring(3.3,R0*.56,dark?'#111':'#e8dcc0')+ring(R0*.56,R0*.66,dark?'#c0262d':'#1f8a3c')+ring(R0*.66,R0*.9,dark?'#111':'#e8dcc0')+ring(R0*.9,R0,dark?'#c0262d':'#1f8a3c');
+    const tp=P(R0+2.2,(a0+a1)/2).split(','); s+=`<text x="${tp[0]}" y="${tp[1]}" font-size="2" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central">${DART_NUMS[i]}</text>`; }
+  return s+`<circle cx="${cx}" cy="${cy}" r="3.3" fill="#1f8a3c" stroke="#fff" stroke-width=".08"/><circle cx="${cx}" cy="${cy}" r="1.6" fill="#c0262d" stroke="#fff" stroke-width=".08"/>`; }
+const SEA={u0:.26,u1:.97,v0:.08,v1:.92,cols:6,rows:4};
+function seaCell(x,y){ const w=W(), h=H(), cw=(SEA.u1-SEA.u0)*w/SEA.cols, ch=(SEA.v1-SEA.v0)*h/SEA.rows, c=Math.floor((x-SEA.u0*w)/cw), r=Math.floor((y-SEA.v0*h)/ch);
+  return (c<0||r<0||c>=SEA.cols||r>=SEA.rows)?null:[c,r]; }
+function seaSVG(){ const g=game, w=W(), h=H(), x0=fx(SEA.u0), x1=fx(SEA.u1), y0=fy(SEA.v0), y1=fy(SEA.v1), cw=(x1-x0)/SEA.cols, ch=(y1-y0)/SEA.rows; let s='';
+  for(let c=0;c<=SEA.cols;c++) s+=`<line x1="${x0+c*cw}" y1="${y0}" x2="${x0+c*cw}" y2="${y1}" stroke="#4dd2ff" stroke-width=".18"/>`;
+  for(let r=0;r<=SEA.rows;r++) s+=`<line x1="${x0}" y1="${y0+r*ch}" x2="${x1}" y2="${y0+r*ch}" stroke="#4dd2ff" stroke-width=".18"/>`;
+  (g.shots||[]).forEach(([c,r,hit])=>{ const cx=x0+(c+.5)*cw, cy=y0+(r+.5)*ch, k=Math.min(Math.abs(cw),Math.abs(ch))*.3;
+    s+= hit ? `<circle cx="${cx}" cy="${cy}" r="${k}" fill="#ff3b3b" fill-opacity=".85"/>` : `<g stroke="#bbb" stroke-width=".35"><line x1="${cx-k}" y1="${cy-k}" x2="${cx+k}" y2="${cy+k}"/><line x1="${cx-k}" y1="${cy+k}" x2="${cx+k}" y2="${cy-k}"/></g>`; });
+  if(g.over) g.ships.forEach(sh=>sh.cells.forEach(([c,r])=>{ s+=`<rect x="${x0+c*cw+(cw<0?cw:0)+.8}" y="${y0+r*ch+(ch<0?ch:0)+.8}" width="${Math.abs(cw)-1.6}" height="${Math.abs(ch)-1.6}" fill="none" stroke="#ffd400" stroke-width=".3"/>`; }));
+  return s; }
 function gameSVG(){
   const g=game, w=W(), h=H(); let s='';
+  if(g.type==='darts') s+=dartSVG(); if(g.type==='sea') s+=seaSVG();
+  if(g.type==='golf' && g.cup && !g.over) s+=`<circle cx="${fx(g.cup.u)}" cy="${fy(g.cup.v)}" r="${g.cup.r}" fill="#000" fill-opacity=".6" stroke="#fff" stroke-width=".3"/><line x1="${fx(g.cup.u)}" y1="${fy(g.cup.v)}" x2="${fx(g.cup.u)}" y2="${fy(g.cup.v)-9}" stroke="#fff" stroke-width=".25"/><path d="M${fx(g.cup.u)},${fy(g.cup.v)-9} l5,1.6 l-5,1.6z" fill="#ffd400"/>`;
   if(!g.over) g.items.forEach(it=> s+=itemSVG(it,false));
   if(st.endMount||st.screenView){
     s+=headText(.025, clip(hud(),58), 1.5, '#ddd', 1);
@@ -1129,6 +1175,29 @@ function endGame(title, score){
 // det = camera detection (or null); manual = points typed by the player (or null)
 function gameShot(det, manual){
   const g=game; if(!g||g.over) return;
+  if(g.type==='darts'||g.type==='golf'||g.type==='sea'){ if(!det){ toast('Cue ball not found'); render(); return; } const x=det.u*W(), y=det.v*H();
+    if(g.type==='darts'){ const [p,lab]=dartScore(x,y), cur=g.scores[g.player]; let msg;
+      if(cur-p<0){ g.scores[g.player]=g.turnStart; msg=`${lab} — bust! Back to ${g.turnStart}`; g.dLeft=0; }
+      else { g.scores[g.player]=cur-p; g.dLeft--; msg=lab; }
+      result={u:det.u,v:det.v,label:lab,pts:p>=20?3:p>0?1:0};
+      if(g.scores[g.player]===0){ g.msg=msg; endGame(`Player ${g.player+1} wins!`, null); render(); return; }
+      if(g.dLeft<=0){ g.player=1-g.player; g.dLeft=3; g.turnStart=g.scores[g.player]; msg+=` · Player ${g.player+1}'s turn`; }
+      g.msg=msg; newRound(); }
+    else if(g.type==='golf'){ g.strokes++; const d=Math.hypot(x-g.cup.u*W(), y-g.cup.v*H()), inCup=d<=g.cup.r;
+      result={u:det.u,v:det.v,label:inCup?'In the cup!':`${d.toFixed(1)}" from the cup`,pts:inCup?3:d<6?1:0};
+      if(inCup||g.strokes>=6){ const sc=g.strokes; g.card.push(sc); const rel=sc-3; g.msg=`Hole ${g.hole}: ${sc} (${rel===0?'par':rel<0?(rel===-2?'eagle':'birdie'):rel===1?'bogey':'+'+rel})`;
+        g.hole++; g.strokes=0; if(g.hole>9){ const tot=g.card.reduce((a,b)=>a+b,0); endGame(`Round over: ${tot} (${tot-27>=0?'+':''}${tot-27})`, -tot); render(); return; } }
+      else { g.lie=[det.u,det.v]; g.msg=`${d.toFixed(1)}" short — play it from there`; }
+      newRound(); }
+    else { const cell=seaCell(x,y); g.score++;
+      if(!cell){ g.msg='Off the grid — splash'; result={u:det.u,v:det.v,label:'Off the grid',pts:0}; }
+      else if(g.shots.some(([c,r])=>c===cell[0]&&r===cell[1])){ g.msg='Already fired there'; result={u:det.u,v:det.v,label:'Repeat',pts:0}; }
+      else { const sh=g.ships.find(q=>q.cells.some(([c,r])=>c===cell[0]&&r===cell[1])); g.shots.push([cell[0],cell[1],!!sh]);
+        if(sh){ sh.hit++; g.msg = sh.hit===sh.cells.length ? `Hit — ship sunk! (${sh.cells.length})` : 'Hit!'; } else g.msg='Miss';
+        result={u:det.u,v:det.v,label:sh?'Hit':'Miss',pts:sh?3:0};
+        if(g.ships.every(q=>q.hit===q.cells.length)){ endGame(`Fleet sunk in ${g.score} shots`, -g.score); render(); return; } }
+      newRound(); }
+    render(); return; }
   let pts=manual, label='';
   if(g.target){
     if(pts==null){ if(!det){ toast('Cue ball not found'); render(); return; }
@@ -1383,7 +1452,36 @@ function analyzeShot(){
 function speak(text){ if(st.speak!==true || !window.speechSynthesis) return; try{ speechSynthesis.cancel(); const u=new SpeechSynthesisUtterance(text); u.rate=1.05;
   speaking=true; u.onend=u.onerror=()=>{ speaking=false; heardAt=performance.now(); if(/Again\?$/.test(text)) openListen(8000); }; speechSynthesis.speak(u); }catch(e){ speaking=false; } }
 var lastJudge=null;
+// ---------- Target practice: pick a shot type, get endless generated shots with a cue-ball target ----------
+const TP_TYPES={
+  'Thin cuts':      {cut:[40,58], dist:[18,36], tip:[0,-.1], speed:3, note:'Thin cut — firm, center ball. Watch the tangent line.'},
+  'Medium cuts':    {cut:[18,38], dist:[18,36], tip:[0,.2],  speed:3, note:'Half-ball range. Hold the cue ball to the target.'},
+  'Stop shots':     {cut:[0,3],   dist:[14,30], tip:[0,-.3], speed:2, note:'Straight in. Kill the cue ball on the spot.'},
+  'Draw shots':     {cut:[0,12],  dist:[12,26], tip:[0,-.6], speed:3, note:'Low tip, smooth follow-through. Draw back to the ring.'},
+  'Follow shots':   {cut:[0,12],  dist:[14,30], tip:[0,.5],  speed:2, note:'High tip, roll through to the ring.'},
+  'Long stun shots':{cut:[12,32], dist:[46,70], tip:[0,-.1], speed:3, note:'Long distance — stun down the tangent line.'},
+  'Short position': {cut:[10,35], dist:[10,18], tip:[0,0],   speed:1, note:'Close shot, soft speed. Land in the ring.'},
+};
+function tpNew(type){
+  const T=TP_TYPES[type]; if(!T) return; const w=W(), h=H(), m=R+2;
+  for(let tries=0;tries<400;tries++){
+    const pk=POCKETS[(Math.random()*6)|0], P=[pk[0]*w,pk[1]*h], side=pk[0]===.5;
+    const ob=[rnd(m,w-m), rnd(m,h-m)], L=Math.hypot(P[0]-ob[0],P[1]-ob[1]); if(L<10||L>40) continue;
+    const ux=(P[0]-ob[0])/L, uy=(P[1]-ob[1])/L; if(side && Math.abs(uy)<.6) continue;   // side pockets only take steep angles
+    const gh=[ob[0]-ux*BALL_D, ob[1]-uy*BALL_D], cut=rnd(...T.cut)*Math.PI/180*(Math.random()<.5?-1:1), d=rnd(...T.dist);
+    const cx=Math.cos(cut), sx=Math.sin(cut), dirx=ux*cx-uy*sx, diry=ux*sx+uy*cx, cb=[gh[0]-dirx*d, gh[1]-diry*d];
+    if(cb[0]<m||cb[1]<m||cb[0]>w-m||cb[1]>h-m) continue;
+    if(POCKETS.some(q=>Math.hypot(q[0]*w-cb[0],q[1]*h-cb[1])<8)) continue;
+    let tg = T.cut[1]<=3 ? [ob[0]-ux*BALL_D, ob[1]-uy*BALL_D] : predictEnd(cb, ob, P, T.tip); if(!tg) continue;
+    tg=[Math.max(4,Math.min(w-4,tg[0])), Math.max(4,Math.min(h-4,tg[1]))];
+    if(Math.hypot(tg[0]-ob[0],tg[1]-ob[1])<4 && T.cut[1]>3) continue;
+    const U=x=>x/w, V=y=>y/h, d_={name:'Target practice · '+type, notes:T.note, tip:T.tip, speed:T.speed, tp:type,
+      items:[B(U(ob[0]),V(ob[1]),1), B(U(cb[0]),V(cb[1]),0), TG(U(tg[0]),V(tg[1]),3), LN('ob',[U(ob[0]),V(ob[1])],[pk[0],pk[1]])]};
+    if((drill().name||'').startsWith('Target practice')) st.drills[st.idx]=d_; else { st.drills.splice(st.idx+1,0,d_); st.idx++; }
+    st.tpType=type; save(); result=null; lastShot=null; enterPlacing(); buildPanel(); render(); toast(`Target practice: ${type}`); return; }
+  toast('Couldn’t place a shot — try again'); }
 function finishShotFeedback(A, det){
+  if(drill().tp && !game) setTimeout(()=>{ if(drill().tp && !game && mode==='play') tpNew(drill().tp); }, 4500);   // a fresh shot of the same kind
   if(!A) A=rectify();
   lastJudge = A&&track&&track.setupA ? {setup:track.setupA, final:A, det:det?{u:det.u,v:det.v}:null, cbStart:track.cbStart, obs:track.obs.map(o=>({n:o.n,start:o.start,ref:o.ref})), setupBalls:track.setupBalls, items:JSON.parse(JSON.stringify(game?game.items:drill().items))} : null; const a = A&&track ? stillAnalysis(A, det||null) : analyzeShot();
   if(a){ const e=logShot(a, det); if(coach.on && e) a.lines.push(...coachAfterShot(e)); } setTimeout(()=>recEnd(true, a?a.lines:['(no analysis)']), 1200); if(!a) return; lastShot=a; showFeedback(a.lines); if(st.voice && st.speak!==true) openListen(10000);
@@ -1413,7 +1511,7 @@ function voiceCmd(t){ listenUntil=0;
   else if(/\bscore\b/.test(t)){ heardAt=performance.now(); toast('Heard: score'); capture().then(det=>{ finishShotFeedback(null, det); scoreShot(det); }); }
 }
 function again(){ result=null; if(game&&game.over){ startGame(game.type); return; } enterPlacing(); render(); speak('Set up the balls'); }
-window.__pt = { projRefine:()=>projRefine(),  projAutoAlign:()=>projAutoAlign(), fitH:(a,b)=>fitH(a,b), get projSize(){ return projSize; },  get bar(){ return bar; }, barCensus:A=>barCensus(A), ballKind:(A,b)=>ballKind(A,b),  get runout(){ return runout; },  feltModel:A=>feltModel(A),  replayJudge:c=>replayJudge(c),  replaySetup:c=>replaySetup(c),  findBallsOpt:(A,d,o)=>findBalls(A,d,o),  clipList:()=>clipList(), rejudge:(c,o)=>rejudge(c,o), obStates:(A,d)=>obStates(A,d), refreshSetup:(A,d)=>refreshSetup(A,d), getTrack:()=>track, setTrack:t=>{track=t;},  savePocketRefs:()=>savePocketRefs(), jawBalls:(f,d)=>jawBalls(f,d), rectPatch:(a,b,c,d)=>rectPatch(a,b,c,d), POCKETS:()=>POCKETS, W:()=>W(), H:()=>H(), toSeen:(u,v)=>toSeen(u,v), ballLook:(A,b)=>ballLook(A,b), pickCue:(A,f)=>pickCue(A,f), get cueMark(){ return cueMark; }, setCueMark:(u,v)=>setCueMark(u,v), camToTable:(x,y)=>camToTable(x,y), rectify:s=>rectify(s), findBalls:(A,d)=>findBalls(A,d), detect:A=>detect(A), feltChroma:A=>feltChroma(A), shotOptions:A=>shotOptions(A), whiteDbg:A=>{ const o=shotOptions(A); return {cue:o.cue&&[o.cue.u*W(),o.cue.v*H(),o.cue.wf], balls:(o.balls||[]).map(b=>[+(b.u*W()).toFixed(1),+(b.v*H()).toFixed(1),+(b.wf||0).toFixed(2),b.name])}; } };
+window.__pt = { gameShot:(d,m)=>gameShot(d,m), get game(){ return game; }, startGame:t=>startGame(t), tpNew:t=>tpNew(t), dartScore:(x,y)=>dartScore(x,y),  projRefine:()=>projRefine(),  projAutoAlign:()=>projAutoAlign(), fitH:(a,b)=>fitH(a,b), get projSize(){ return projSize; },  get bar(){ return bar; }, barCensus:A=>barCensus(A), ballKind:(A,b)=>ballKind(A,b),  get runout(){ return runout; },  feltModel:A=>feltModel(A),  replayJudge:c=>replayJudge(c),  replaySetup:c=>replaySetup(c),  findBallsOpt:(A,d,o)=>findBalls(A,d,o),  clipList:()=>clipList(), rejudge:(c,o)=>rejudge(c,o), obStates:(A,d)=>obStates(A,d), refreshSetup:(A,d)=>refreshSetup(A,d), getTrack:()=>track, setTrack:t=>{track=t;},  savePocketRefs:()=>savePocketRefs(), jawBalls:(f,d)=>jawBalls(f,d), rectPatch:(a,b,c,d)=>rectPatch(a,b,c,d), POCKETS:()=>POCKETS, W:()=>W(), H:()=>H(), toSeen:(u,v)=>toSeen(u,v), ballLook:(A,b)=>ballLook(A,b), pickCue:(A,f)=>pickCue(A,f), get cueMark(){ return cueMark; }, setCueMark:(u,v)=>setCueMark(u,v), camToTable:(x,y)=>camToTable(x,y), rectify:s=>rectify(s), findBalls:(A,d)=>findBalls(A,d), detect:A=>detect(A), feltChroma:A=>feltChroma(A), shotOptions:A=>shotOptions(A), whiteDbg:A=>{ const o=shotOptions(A); return {cue:o.cue&&[o.cue.u*W(),o.cue.v*H(),o.cue.wf], balls:(o.balls||[]).map(b=>[+(b.u*W()).toFixed(1),+(b.v*H()).toFixed(1),+(b.wf||0).toFixed(2),b.name])}; } };
 window.__poolDebug = { get track(){ return track; }, get lastShot(){ return lastShot; }, get state(){ return shotState; } };
 
 // ---------- shot recorder: saves the webcam clip + tracking data for each shot ----------
